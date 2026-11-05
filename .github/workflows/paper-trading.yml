@@ -25,12 +25,12 @@ permissions:
   pages: write      # publish the dashboard
   id-token: write
 
-concurrency:
-  group: paper-trading
-  cancel-in-progress: false
-
 jobs:
   run:
+    # One book run at a time. Only this job holds the lock, so a slow Pages deploy can't hold up the next run.
+    concurrency:
+      group: paper-trading
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     outputs:
       ran: ${{ steps.due.outputs.rotate == 'true' || steps.due.outputs.brief == 'true' }}
@@ -110,9 +110,16 @@ jobs:
     if: ${{ !cancelled() && needs.run.outputs.ran == 'true' }}
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 4
+    # A newer dashboard replaces an older one still deploying.
+    concurrency:
+      group: paper-trading-pages
+      cancel-in-progress: true
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - id: deploy
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 180000   # ms; Pages sometimes sits in "updating_pages", and the default waits 10 minutes
