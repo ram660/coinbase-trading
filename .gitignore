@@ -1,0 +1,8 @@
+config/.env
+config/local.toml
+data/*
+!data/.gitkeep
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/

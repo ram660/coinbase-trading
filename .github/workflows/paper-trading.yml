@@ -1,0 +1,56 @@
+# Runs the paper rotation books every hour and the daily brief each morning, in GitHub's cloud.
+# Simulated money only: no API keys or secrets are used. State is committed back to the repo's `paper-state` branch.
+name: paper-trading
+
+on:
+  schedule:
+    - cron: "15 * * * *"   # every hour (UTC)
+    - cron: "5 15 * * *"   # brief at 15:05 UTC = 7:05 am Vancouver (PST)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: paper-trading
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Restore state from the paper-state branch
+        run: |
+          git fetch origin paper-state || true
+          if git rev-parse --verify origin/paper-state >/dev/null 2>&1; then
+            git checkout origin/paper-state -- data/ || true
+          fi
+
+      - name: Run paper books
+        run: PYTHONPATH=src python -m cbagent rotate
+
+      - name: Daily brief
+        if: github.event.schedule == '5 15 * * *' || github.event_name == 'workflow_dispatch'
+        run: PYTHONPATH=src python -m cbagent brief
+
+      - name: Save state to the paper-state branch
+        run: |
+          git config user.name "paper-trading-bot"
+          git config user.email "paper-trading-bot@users.noreply.github.com"
+          mkdir -p /tmp/state && cp -r data /tmp/state/
+          git fetch origin paper-state || true
+          if git rev-parse --verify origin/paper-state >/dev/null 2>&1; then
+            git checkout -B paper-state origin/paper-state
+          else
+            git checkout --orphan paper-state && git rm -rf --cached . >/dev/null && git clean -fdx -e /tmp
+          fi
+          rm -rf data && cp -r /tmp/state/data data
+          git add -f data
+          git commit -m "paper state $(date -u +%Y-%m-%dT%H:%MZ)" || echo "no changes"
+          git push origin paper-state

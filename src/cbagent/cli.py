@@ -1,0 +1,354 @@
+"""Command line: backtest, paper, live, status, kill, unkill."""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+from dataclasses import replace
+from decimal import Decimal
+
+from .brokers.paper import PaperBroker
+from .config import Config, load_config
+from .engine import Engine, run_backtest
+from .exits import AtrTrailingStop
+from .market_data import fetch_candles
+from .risk import RiskManager
+from .strategies import build_strategy
+
+
+def _risk(cfg: Config) -> RiskManager:
+    return RiskManager(cfg.risk, cfg.kill_switch_path, cfg.data_dir / f"risk_state_{cfg.mode}.json")
+
+
+def _stop(cfg: Config) -> AtrTrailingStop | None:
+    mult = float(cfg.exits.get("atr_mult", 0))
+    return AtrTrailingStop(int(cfg.exits.get("atr_period", 14)), mult) if mult > 0 else None
+
+
+def cmd_backtest(cfg: Config, args) -> int:
+    settings = cfg.strategy
+    if args.strategy and args.strategy != cfg.strategy["name"]:
+        settings = {"name": args.strategy, "order_quote": cfg.strategy.get("order_quote", 50)}
+    strategy = build_strategy(settings)
+    stop = None if args.no_stop else _stop(cfg)
+    products = args.product or cfg.products
+    print(f"Fetching {args.bars} {cfg.granularity} candles for {', '.join(products)} ...")
+    history = {p: fetch_candles(p, cfg.granularity, args.bars) for p in products}
+    log = print if args.verbose else lambda _m: None
+    engine = Engine(strategy, RiskManager(cfg.risk), PaperBroker(cfg.paper), log=log, stop=stop)
+    result = run_backtest(engine, history)
+    print(f"Strategy {strategy.name}, ATR stop {'off' if stop is None else f'{stop.mult}x'}")
+    print(result.summary())
+    return 0
+
+
+def cmd_robustness(cfg: Config, args) -> int:
+    from . import robustness
+
+    products = args.product or cfg.products
+    days = args.years * 365 + robustness.PREFIX_DAYS
+    print(f"Fetching {days} daily candles for {', '.join(products)} ...")
+    history = {p: fetch_candles(p, "ONE_DAY", days) for p in products}
+    n = (args.years * 365 - args.window) // args.step + 1
+    print(f"{n} windows of {args.window} days, every {args.step} days, ${cfg.paper.starting_cash} each, "
+          f"ATR stop {'on' if not args.no_stop else 'off'}, drawdown limit {cfg.risk.max_drawdown_pct}%")
+    print()
+    print(robustness.hold_line(history, args.window, args.step))
+    for row in robustness.run(cfg, history, args.window, args.step, use_stop=not args.no_stop):
+        print(row.line())
+    return 0
+
+
+def cmd_scan(cfg: Config, args) -> int:
+    from . import scanner
+
+    print(f"Scanning Coinbase {args.quote} spot pairs with over {args.min_volume:,.0f} daily volume ...")
+    rows = scanner.scan(args.quote, args.min_volume)
+    if not rows:
+        print("No coins matched.")
+        return 1
+    held = {h.upper() for h in (args.held or cfg.portfolio.get("holdings", []))}
+    print(scanner.report(rows, held, args.top))
+    print(f"\nFull table: {scanner.save_csv(rows, cfg.data_dir)}")
+    return 0
+
+
+def cmd_portfolio(cfg: Config, args) -> int:
+    from . import portfolio
+
+    quantities = {k.upper(): float(v) for k, v in cfg.portfolio.get("quantities", {}).items()}
+    if not quantities:
+        print("Add your coin amounts under [portfolio.quantities] in config/local.toml, e.g. HBAR = 7603.6")
+        return 1
+    print(portfolio.build(quantities, args.quote))
+    return 0
+
+
+def cmd_news(cfg: Config, args) -> int:
+    from . import news
+
+    coins = [c.upper() for c in (args.coin or [*cfg.portfolio.get("quantities", {}), "BTC"])]
+    articles, failed = news.fetch_all(args.days)
+    print(news.report(articles, failed, coins))
+    return 0
+
+
+def cmd_brief(cfg: Config, args) -> int:
+    """Scanner, portfolio and news on one page, saved to data/briefs/YYYY-MM-DD.md. Read-only."""
+    from datetime import datetime, timezone
+
+    from . import news, portfolio, scanner
+
+    quantities = {k.upper(): float(v) for k, v in cfg.portfolio.get("quantities", {}).items()}
+    held = set(quantities) or {h.upper() for h in cfg.portfolio.get("holdings", [])}
+    sections = []
+
+    def section(title: str, build) -> None:
+        try:
+            body = build()
+        except Exception as e:  # one failed source shouldn't sink the brief
+            body = f"Unavailable: {e}"
+        sections.append(f"## {title}\n\n```\n{body}\n```")
+
+    def scan() -> str:
+        rows = scanner.scan("USDC", 1_000_000)
+        scanner.save_csv(rows, cfg.data_dir)
+        return scanner.report(rows, held, 10)
+
+    def headlines() -> str:
+        articles, failed = news.fetch_all(1)
+        return news.report(articles, failed, [*sorted(held), "BTC"], per_coin=3, market=8)
+
+    def books() -> str:
+        from .rotation_paper import BOOKS, PaperRotation
+        out = []
+        for b in BOOKS.values():
+            r = PaperRotation(b, cfg.data_dir)
+            if r.path.exists():
+                out += [b.description, r.status(), ""]
+        return "\n".join(out).strip() or "No paper books running."
+
+    section("Paper trading books (simulated money)", books)
+    if quantities:
+        section("Portfolio", lambda: portfolio.build(quantities))
+    section("Market scan", scan)
+    section("News, last 24 hours", headlines)
+
+    now = datetime.now(timezone.utc)
+    text = (f"# Daily brief {now:%Y-%m-%d}\n\nGenerated {now:%H:%M} UTC from public Coinbase data and news feeds. "
+            "Descriptive only: no orders were placed and nothing here is advice.\n\n" + "\n\n".join(sections) + "\n")
+    out = cfg.data_dir / "briefs" / f"brief_{now:%Y-%m-%d}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    print(text if args.print else f"Brief saved to {out}")
+    return 0
+
+
+def cmd_lab(cfg: Config, args) -> int:
+    from . import lab
+
+    days = args.years * 365 + 210
+    print(f"Loading {days} days of daily closes for liquid {args.quote} coins ...")
+    closes = lab.load_universe(args.quote, days)
+    configs = [lab.Rotation(top_n=n, lookback=lb, btc_filter=f) for n in (3, 5, 10) for lb in (30, 90) for f in (True, False)]
+    print(lab.rolling(closes, configs, f"BTC-{args.quote}"))
+    return 0
+
+
+def cmd_rotate(cfg: Config, args) -> int:
+    """Paper momentum rotation books. Simulated money only."""
+    from .rotation_paper import BOOKS, PaperRotation
+
+    names = list(BOOKS) if args.book == "all" else [args.book]
+    for name in names:
+        book = PaperRotation(BOOKS[name], cfg.data_dir)
+        try:
+            print(book.status() if args.status else book.run(force=args.force))
+        except Exception as e:  # one book failing shouldn't stop the other
+            print(f"[{name}] failed: {e}")
+    return 0
+
+
+def _live_loop(cfg: Config, engine: Engine, once: bool) -> int:
+    strategy = engine.strategy
+    while True:
+        now = int(time.time())
+        try:
+            candles = {p: fetch_candles(p, cfg.granularity, strategy.warmup + 5) for p in cfg.products}
+            engine.tick(candles, now)  # handles the kill switch, including selling to cash after a drawdown trip
+        except Exception as e:  # a network blip should not kill the loop
+            print(f"tick failed: {e}", file=sys.stderr)
+            engine.journal("error", message=str(e))
+        state = engine.risk.state
+        waiting_for_cooloff = state.auto_tripped and cfg.risk.cooloff_days > 0
+        if engine.risk.kill_switch_active() and not state.flatten_pending and not waiting_for_cooloff:
+            print(f"Kill switch is on ({cfg.kill_switch_path}). Stopping. Run `cbagent unkill` after reviewing.")
+            return 2
+        if once:
+            return 0
+        time.sleep(cfg.poll_seconds)
+
+
+def cmd_paper(cfg: Config, args) -> int:
+    paper_cfg = replace(cfg, mode="paper")
+    broker = PaperBroker(cfg.paper, cfg.data_dir / "paper_state.json")
+    engine = Engine(build_strategy(cfg.strategy), _risk(paper_cfg), broker, cfg.data_dir / "journal_paper.jsonl", stop=_stop(cfg))
+    print(f"PAPER trading {', '.join(cfg.products)} every {cfg.poll_seconds}s. No real orders. Ctrl+C to stop.")
+    return _live_loop(paper_cfg, engine, args.once)
+
+
+def cmd_live(cfg: Config, args) -> int:
+    from .brokers.coinbase_live import CoinbaseLiveBroker, LiveTradingNotAllowed
+
+    try:
+        broker = CoinbaseLiveBroker(cfg, live_flag=args.live)
+    except LiveTradingNotAllowed as e:
+        print(f"Live trading refused: {e}")
+        return 1
+    engine = Engine(build_strategy(cfg.strategy), _risk(cfg), broker, cfg.data_dir / "journal_live.jsonl", stop=_stop(cfg))
+    print(f"LIVE trading {', '.join(cfg.products)} with REAL money. Max order {cfg.risk.max_order_quote}. Ctrl+C to stop.")
+    return _live_loop(cfg, engine, args.once)
+
+
+def cmd_live_check(cfg: Config, args) -> int:
+    """Read-only: checks the key, balances and products, and says what the strategy would do now. Places nothing."""
+    from .brokers.coinbase_live import LiveTradingNotAllowed, key_permissions, make_client
+
+    try:
+        client = make_client(cfg)
+        perms = key_permissions(client)
+    except LiveTradingNotAllowed as e:
+        print(f"Not ready: {e}")
+        return 1
+    ok = True
+    print(f"Key: view={perms.get('can_view')} trade={perms.get('can_trade')} transfer={perms.get('can_transfer')} "
+          f"portfolio={perms.get('portfolio_type')}")
+    if perms.get("can_transfer"):
+        print("  NOT OK: this key can move funds out. Delete it and create one with View and Trade only.")
+        ok = False
+    if not perms.get("can_trade"):
+        print("  NOT OK: this key cannot trade.")
+        ok = False
+
+    accounts = client.get_accounts(limit=250).to_dict().get("accounts", [])
+    balances = {a["currency"]: Decimal(a["available_balance"]["value"]) for a in accounts}
+    quote = cfg.products[0].split("-")[1]
+    allocation = Decimal(str(cfg.live.get("allocation_quote", 0)))
+    print(f"{quote} available: {balances.get(quote, Decimal('0')):.2f}   bot allocation: {allocation:.2f}")
+    if balances.get(quote, Decimal("0")) < allocation:
+        print(f"  Note: less {quote} than the allocation; the bot will only use what is there.")
+
+    strategy = build_strategy(cfg.strategy)
+    for p in cfg.products:
+        info = client.get_product(p).to_dict()
+        print(f"{p}: price {info.get('price')}  min order {info.get('quote_min_size')} {quote}  "
+              f"trading {'disabled' if info.get('trading_disabled') else 'enabled'}")
+        candles = fetch_candles(p, cfg.granularity, strategy.warmup + 5)
+        signal = strategy.on_candles(p, candles, Decimal("0"))
+        print(f"  {strategy.name} would {signal.action} now if flat: {signal.reason}")
+    print("Ready for `cbagent live --live`." if ok and cfg.mode == "live" else "Not ready yet (see above, and mode must be live).")
+    return 0 if ok else 1
+
+
+def cmd_status(cfg: Config, args) -> int:
+    print(f"Mode in config: {cfg.mode}")
+    print(f"Kill switch:    {'ON' if cfg.kill_switch_path.exists() else 'off'}")
+    state = cfg.data_dir / "paper_state.json"
+    if state.exists():
+        data = json.loads(state.read_text(encoding="utf-8"))
+        print(f"Paper cash:     {Decimal(data['cash']):.2f}")
+        for p, v in data["positions"].items():
+            if Decimal(v["base"]):
+                print(f"  {p}: {v['base']} (cost {Decimal(v['cost']):.2f})")
+    return 0
+
+
+def cmd_kill(cfg: Config, args) -> int:
+    _risk(cfg).trip_kill_switch(args.reason or "manual kill switch")
+    print(f"Kill switch ON: {cfg.kill_switch_path}")
+    return 0
+
+
+def cmd_unkill(cfg: Config, args) -> int:
+    for mode in ("paper", "live"):
+        RiskManager(cfg.risk, cfg.kill_switch_path, cfg.data_dir / f"risk_state_{mode}.json").reset_kill_switch()
+    print("Kill switch off.")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cbagent")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    bt = sub.add_parser("backtest", help="replay recent public candles through the strategy")
+    bt.add_argument("--product", action="append", help="override products (repeatable)")
+    bt.add_argument("--bars", type=int, default=1000)
+    bt.add_argument("--strategy", help="try another registered strategy with its default parameters")
+    bt.add_argument("--no-stop", action="store_true", help="turn the ATR trailing stop off")
+    bt.add_argument("-v", "--verbose", action="store_true")
+    bt.set_defaults(fn=cmd_backtest)
+
+    rb = sub.add_parser("robustness", help="test every candidate strategy over rolling windows of daily data")
+    rb.add_argument("--product", action="append")
+    rb.add_argument("--years", type=int, default=6)
+    rb.add_argument("--window", type=int, default=365, help="window length in days")
+    rb.add_argument("--step", type=int, default=90, help="days between window starts")
+    rb.add_argument("--no-stop", action="store_true")
+    rb.set_defaults(fn=cmd_robustness)
+
+    sc = sub.add_parser("scan", help="measure every liquid Coinbase spot pair (read-only)")
+    sc.add_argument("--quote", default="USDC")
+    sc.add_argument("--min-volume", type=float, default=1_000_000, help="minimum 24h volume in quote currency")
+    sc.add_argument("--top", type=int, default=15)
+    sc.add_argument("--held", action="append", help="coins you hold, e.g. --held HBAR (default: [portfolio] holdings)")
+    sc.set_defaults(fn=cmd_scan)
+
+    pf = sub.add_parser("portfolio", help="risk and concentration report for [portfolio.quantities] (read-only)")
+    pf.add_argument("--quote", default="USDC")
+    pf.set_defaults(fn=cmd_portfolio)
+
+    nw = sub.add_parser("news", help="recent crypto headlines matched to your coins (read-only)")
+    nw.add_argument("--coin", action="append", help="coins to match (default: your holdings plus BTC)")
+    nw.add_argument("--days", type=int, default=3)
+    nw.set_defaults(fn=cmd_news)
+
+    br = sub.add_parser("brief", help="portfolio, market scan and news on one page in data/briefs (read-only)")
+    br.add_argument("--print", action="store_true", help="also print the brief")
+    br.set_defaults(fn=cmd_brief)
+
+    lb = sub.add_parser("lab", help="test cross-coin rotation ideas over rolling windows (read-only)")
+    lb.add_argument("--quote", default="USDC")
+    lb.add_argument("--years", type=int, default=4)
+    lb.set_defaults(fn=cmd_lab)
+
+    ro = sub.add_parser("rotate", help="run the paper momentum rotation books (simulated money)")
+    ro.add_argument("--book", default="all", choices=["all", "daily", "fast"])
+    ro.add_argument("--status", action="store_true", help="show equity and holdings without trading")
+    ro.add_argument("--force", action="store_true", help="rebalance now even if not due")
+    ro.set_defaults(fn=cmd_rotate)
+
+    pp = sub.add_parser("paper", help="paper trade against live prices (default, safe)")
+    pp.add_argument("--once", action="store_true", help="run one tick and exit")
+    pp.set_defaults(fn=cmd_paper)
+
+    lv = sub.add_parser("live", help="REAL orders; needs mode=live, --live and CBAGENT_LIVE_CONFIRM")
+    lv.add_argument("--live", action="store_true", help="required to confirm real orders")
+    lv.add_argument("--once", action="store_true")
+    lv.set_defaults(fn=cmd_live)
+
+    sub.add_parser("live-check", help="read-only check of the API key, balances and products").set_defaults(fn=cmd_live_check)
+    sub.add_parser("status", help="show mode, kill switch and paper holdings").set_defaults(fn=cmd_status)
+    k = sub.add_parser("kill", help="turn the kill switch on")
+    k.add_argument("--reason")
+    k.set_defaults(fn=cmd_kill)
+    sub.add_parser("unkill", help="turn the kill switch off").set_defaults(fn=cmd_unkill)
+
+    args = parser.parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # headlines carry curly quotes
+    return args.fn(load_config(), args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

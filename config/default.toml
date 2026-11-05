@@ -1,0 +1,65 @@
+# Coinbase trading agent settings. Copy to config/local.toml to override (local.toml is git-ignored).
+# Money values are in the quote currency of each product (USD for BTC-USD).
+
+# "paper" simulates fills against live public prices. "live" sends real orders and is
+# additionally gated by the --live CLI flag and CBAGENT_LIVE_CONFIRM in .env.
+mode = "paper"
+products = ["BTC-USD", "ETH-USD"]
+# ONE_MINUTE, FIVE_MINUTE, FIFTEEN_MINUTE, THIRTY_MINUTE, ONE_HOUR, TWO_HOUR, SIX_HOUR, ONE_DAY
+granularity = "ONE_HOUR"
+poll_seconds = 300
+data_dir = "data"
+
+[strategy]
+name = "sma_crossover"
+fast = 20
+slow = 50
+order_quote = 50
+
+# Alternative: five-indicator confluence scoring (RSI, MACD, Bollinger, EMA trend, volume).
+# [strategy]
+# name = "confluence"
+# buy_score = 3     # of 5 votes, net
+# sell_score = -2
+# order_quote = 50
+
+# Daily strategies (set granularity = "ONE_DAY" and poll_seconds = 3600):
+# [strategy]
+# name = "trend"      # hold while close is band_pct above its period-day average
+# period = 200
+# band_pct = 2
+# order_quote = 500
+#
+# [strategy]
+# name = "dca"        # fixed weekly buy, multiplied after a dip_pct drop from the dip_lookback-day high
+# weekday = "monday"
+# order_quote = 10
+# dip_pct = 15
+# dip_multiplier = 2
+
+[exits]
+# ATR trailing stop on every open position: sell if the close drops atr_mult x ATR below the
+# highest close since entry. Set atr_mult = 0 to turn it off.
+atr_period = 14
+atr_mult = 3
+
+[risk]
+max_order_quote = 50            # largest single order
+max_position_quote = 200        # largest holding in any one product
+max_total_exposure_quote = 500  # all holdings combined
+max_daily_loss_quote = 50       # stop opening positions after losing this much today (UTC)
+max_drawdown_pct = 30           # trip the kill switch at this drop from peak equity
+on_drawdown = "flatten"         # on that trip: "flatten" sells everything to cash, "freeze" keeps holdings
+cooloff_days = 30               # restart this long after an automatic trip (0 = stay off until `cbagent unkill`)
+reentry_size_pct = 50           # order size after a restart, for another cooloff_days
+max_orders_per_day = 20
+kill_switch_file = "KILL_SWITCH"  # if this file exists in data_dir, nothing trades
+
+[portfolio]
+# Coins you hold, marked in `cbagent scan`. Read-only; the bot never trades these.
+holdings = ["HBAR", "QNT", "LCX", "RENDER", "ARB"]
+
+[paper]
+starting_cash = 1000
+fee_pct = 0.5        # Coinbase Advanced taker fee on the Intro tier (Nov 2026)
+slippage_pct = 0.05

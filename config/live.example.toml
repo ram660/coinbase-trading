@@ -1,0 +1,31 @@
+# $100 live test. Copy this file to config/local.toml when you are ready, then follow docs/GOING_LIVE.md.
+# It overrides config/default.toml.
+
+mode = "live"
+# USDC pairs: CAD pairs aren't offered on this account, and the bot's cash comes from the USDC balance.
+products = ["BTC-USDC", "ETH-USDC"]
+granularity = "ONE_DAY"
+poll_seconds = 3600
+
+[live]
+allocation_quote = 100  # the bot never spends more than this, whatever the account holds
+
+[strategy]
+# Daily 50/200 moving-average cross: the most defensive candidate in the robustness test
+# (worst one-year window -7%, no kill-switch trips). It trades rarely, so expect weeks with no orders.
+name = "sma_crossover"
+fast = 50
+slow = 200
+order_quote = 50
+
+[risk]
+max_order_quote = 50
+max_position_quote = 50
+max_total_exposure_quote = 100
+max_daily_loss_quote = 15
+max_drawdown_pct = 30
+on_drawdown = "flatten"
+cooloff_days = 30
+reentry_size_pct = 50
+max_orders_per_day = 4
+kill_switch_file = "KILL_SWITCH"
