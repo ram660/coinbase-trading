@@ -549,7 +549,7 @@ $("books").innerHTML = D.books.map(b => {
   const src = [...new Set(b.holdings.map(h => h.price_source))].join(", ");
   return `<div class="card">
     <div class="book-head"><h2><span class="swatch" style="background:${color(b.name)}"></span>${esc(b.name)} book</h2>
-      <span class="badge">rebalances every ${b.rebalance_hours} h</span></div>
+      <span class="badge">rebalances every ${b.rebalance_hours >= 1 ? b.rebalance_hours + " h" : Math.round(b.rebalance_hours * 60) + " min"}</span></div>
     <div class="sub">${esc(b.description)}</div>
     <div class="book-head" style="margin-top:10px"><span class="eq">${usd(b.equity)}</span><span class="${cls(b.pnl)}" style="font-weight:600">${signed(b.pnl)} (${pct(b.pct)})</span></div>
     <div class="kv">

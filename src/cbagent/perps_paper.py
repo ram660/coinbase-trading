@@ -11,7 +11,7 @@ Each hourly run:
   2. checks liquidation against the worst hourly price since the last run (low for longs, high for shorts). If equity
      there falls below the maintenance margin, every position is closed at that price with a penalty.
   3. stops the book (flat, for good) if equity falls max_drawdown_pct from its peak.
-  4. rebalances to the trend targets once a day, unless data/KILL_SWITCH exists.
+  4. rebalances to the trend targets every 15 minutes, unless data/KILL_SWITCH exists.
 
 Fees are 0.02% of notional plus $0.11 per contract (Coinbase's introductory perps fee in Canada, Sept 2026). The book
 also tracks what fees would have been at stress_fee_pct, to see whether the result survives the end of that promo.
@@ -59,7 +59,7 @@ class PerpBook:
     vol_bars: int = 30
     target_vol_pct: float = 50.0   # annualised volatility each position is sized to
     max_leverage: float = 2.0      # total notional / equity
-    rebalance_hours: int = 24
+    rebalance_hours: float = 0.25  # signals use closed daily bars, so most checks change nothing
     starting_cash: float = 1000.0
     fee_pct: float = 0.02
     fee_per_contract: float = 0.11
