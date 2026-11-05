@@ -167,6 +167,17 @@ def cmd_rotate(cfg: Config, args) -> int:
             print(book.status() if args.status else book.run(force=args.force))
         except Exception as e:  # one book failing shouldn't stop the other
             print(f"[{name}] failed: {e}")
+            if not args.status:
+                book.log_error(e)
+    return 0
+
+
+def cmd_dashboard(cfg: Config, args) -> int:
+    """Static HTML page of the paper books and workflow runs, from data/. Read-only."""
+    from . import dashboard
+
+    out = dashboard.write(cfg.data_dir, args.out, runs_path=args.runs, repo=args.repo)
+    print(f"Dashboard saved to {out}")
     return 0
 
 
@@ -327,6 +338,12 @@ def main(argv: list[str] | None = None) -> int:
     ro.add_argument("--status", action="store_true", help="show equity and holdings without trading")
     ro.add_argument("--force", action="store_true", help="rebalance now even if not due")
     ro.set_defaults(fn=cmd_rotate)
+
+    db = sub.add_parser("dashboard", help="HTML page of the paper books, trades and workflow runs (read-only)")
+    db.add_argument("--out", default=None, help="output file (default data/dashboard/index.html)")
+    db.add_argument("--runs", default=None, help="GitHub Actions runs JSON (default data/workflow_runs.json)")
+    db.add_argument("--repo", default="ram660/coinbase-trading", help="owner/name, for links")
+    db.set_defaults(fn=cmd_dashboard)
 
     pp = sub.add_parser("paper", help="paper trade against live prices (default, safe)")
     pp.add_argument("--once", action="store_true", help="run one tick and exit")

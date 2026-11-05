@@ -354,12 +354,61 @@ class PaperRotationTests(unittest.TestCase):
             r.run(now=1_000_000 + 86400)
         self.assertEqual(set(r.state["holdings"]), {"A-USDC", "C-USDC"})
         self.assertGreater(r.state["cash"], -0.01)
+        self.assertEqual(r.state["prices"], {"A-USDC": 10.0, "C-USDC": 5.0})
 
     def test_score_needs_uptrend_and_positive_momentum(self):
         from cbagent.rotation_paper import BOOKS, score
         book = BOOKS["daily"]
         self.assertIsNotNone(score([100 * 1.01 ** i + (i % 2) for i in range(60)], book))
         self.assertIsNone(score([100 * 0.99 ** i + (i % 2) for i in range(60)], book))
+
+
+class DashboardTests(unittest.TestCase):
+    def _data(self):
+        import json
+        d = Path(tempfile.mkdtemp())
+        rows = [
+            {"ts": "2026-11-05T05:00:00+00:00", "book": "fast", "event": "fill", "product": "A-USDC", "side": "BUY", "qty": 10, "price": 10, "fee": 0.5},
+            {"ts": "2026-11-05T05:00:00+00:00", "book": "fast", "event": "rebalance", "note": "picks: A-USDC (1.00)", "equity": 999.5},
+            {"ts": "2026-11-05T09:00:00+00:00", "book": "fast", "event": "fill", "product": "A-USDC", "side": "SELL", "qty": 5, "price": 12, "fee": 0.3},
+            {"ts": "2026-11-05T09:00:00+00:00", "book": "fast", "event": "rebalance", "note": "picks: </script>", "equity": 1009},
+            {"ts": "2026-11-05T10:00:00+00:00", "book": "fast", "event": "error", "error": "boom"},
+        ]
+        (d / "journal_rotation.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\nnot json\n")
+        state = {"cash": 959.7, "holdings": {"A-USDC": 5}, "prices": {"A-USDC": 14.0}, "fees": 0.8,
+                 "last_rebalance": 1793869200, "equity": [[1793854800, 999.5], [1793869200, 1019.7]]}
+        (d / "rotation_fast.json").write_text(json.dumps(state))
+        return d
+
+    def test_cost_basis_pnl_and_trades(self):
+        from cbagent import dashboard
+        data = dashboard.collect(self._data(), now=1793872800)
+        b = data["books"][0]
+        self.assertEqual(b["name"], "fast")
+        self.assertAlmostEqual(b["equity"], 959.7 + 70)
+        self.assertAlmostEqual(b["holdings"][0]["cost"], 50.25)          # half of 100.5
+        self.assertAlmostEqual(b["realized"], 60 - 0.3 - 50.25)
+        self.assertAlmostEqual(b["unrealized"], 70 - 50.25)
+        self.assertEqual([r["trades"] for r in data["rebalances"]], [1, 1])
+        self.assertEqual(len(data["fills"]), 2)
+        self.assertEqual(data["errors"][0]["error"], "boom")
+        self.assertNotIn("picks: </script>", dashboard.render(data))
+
+    def test_health_counts_missed_hours_and_failures(self):
+        from cbagent import dashboard
+        h0 = 1793869200 - 1793869200 % 3600
+        runs = [{"run_number": i, "event": "schedule", "status": "completed", "conclusion": c,
+                 "run_started_at": datetime.fromtimestamp(h0 + i * 3600 + 900, timezone.utc).isoformat(),
+                 "updated_at": datetime.fromtimestamp(h0 + i * 3600 + 930, timezone.utc).isoformat()}
+                for i, c in [(0, "success"), (1, "success"), (4, "failure")]]
+        h = dashboard.health(dashboard._runs({"workflow_runs": runs}), [], now=h0 + 5 * 3600 + 60)
+        self.assertEqual(h["level"], "critical")  # last run failed
+        self.assertEqual(h["missed_24h"], 2)       # hours 2 and 3
+        self.assertEqual(h["hours_with_run"], 3)
+        self.assertEqual(h["median_duration"], 30)
+        self.assertEqual(h["cells"][-1]["state"], "pending")
+        ok = dashboard.health(dashboard._runs({"workflow_runs": runs[:2]}), [], now=h0 + 3600 + 1800)
+        self.assertEqual(ok["level"], "good")
 
 
 class LiveGateTests(unittest.TestCase):

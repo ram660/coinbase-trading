@@ -62,6 +62,17 @@ All limits are in the quote currency (USD for `BTC-USD`) and live in `[risk]` in
 also just create the file. A manual kill freezes holdings so you decide what to do; an automatic drawdown trip
 sells to cash first (unless `on_drawdown = "freeze"`). Either way the bot stays off until `cbagent unkill`.
 
+## Dashboard
+
+The hourly `paper-trading` workflow builds a dashboard of the paper books (equity over time, holdings with cost and
+P&L, every rebalance and fill) and of the workflow itself (hour-by-hour run strip, missed hours, success rate,
+recent runs) and publishes it to GitHub Pages at https://ram660.github.io/coinbase-trading/. One-time setup:
+Settings > Pages > Source = "GitHub Actions". The page is public because the repo is; it only shows the simulated
+books.
+
+Locally, `cbagent dashboard` writes `data/dashboard/index.html` from `data/`, using live public prices if the state has
+no marks yet. Add `--runs file.json` (the GitHub runs API response) to include the workflow section.
+
 ## Robustness test
 
 `cbagent robustness` replays every candidate over rolling one-year windows of daily data (default: 6 years, a
