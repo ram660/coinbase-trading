@@ -9,7 +9,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write   # push state to the paper-state branch
+  actions: read     # run history for the dashboard
+  pages: write      # publish the dashboard
+  id-token: write
 
 concurrency:
   group: paper-trading
@@ -39,6 +42,26 @@ jobs:
         if: github.event.schedule == '5 15 * * *' || github.event_name == 'workflow_dispatch'
         run: PYTHONPATH=src python -m cbagent brief
 
+      - name: Fetch workflow run history
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/paper-trading.yml/runs?per_page=100" \
+            > "$RUNNER_TEMP/workflow_runs.json" || echo '{}' > "$RUNNER_TEMP/workflow_runs.json"
+
+      - name: Build dashboard
+        if: ${{ !cancelled() }}
+        run: |
+          PYTHONPATH=src python -m cbagent dashboard --out "$RUNNER_TEMP/site/index.html" \
+            --runs "$RUNNER_TEMP/workflow_runs.json" --repo "$GITHUB_REPOSITORY"
+
+      - name: Upload dashboard
+        if: ${{ !cancelled() }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+
       - name: Save state to the paper-state branch
         run: |
           git config user.name "paper-trading-bot"
@@ -54,3 +77,17 @@ jobs:
           git add -f data
           git commit -m "paper state $(date -u +%Y-%m-%dT%H:%MZ)" || echo "no changes"
           git push origin paper-state
+
+  # Publishes the dashboard to GitHub Pages. Needs Settings > Pages > Source = "GitHub Actions" once; until then this
+  # job fails on its own without failing the paper run.
+  dashboard:
+    needs: run
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

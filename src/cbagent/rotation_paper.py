@@ -101,6 +101,9 @@ class PaperRotation:
         with self.journal.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"ts": datetime.now(timezone.utc).isoformat(), "book": self.book.name, **data}) + "\n")
 
+    def log_error(self, error: Exception) -> None:
+        self._log(event="error", error=f"{type(error).__name__}: {error}"[:300])
+
     def _trade(self, pid: str, value: float, price: float) -> None:
         """Buy (value > 0) or sell (value < 0) about `value` of quote at market, with fee and slippage."""
         fee_rate, slip = self.book.fee_pct / 100, self.book.slippage_pct / 100
@@ -143,6 +146,8 @@ class PaperRotation:
             lines.append(f"rebalanced: {note}")
         equity = self.equity(prices)
         self.state["equity"].append([int(now), round(equity, 2)])
+        self.state["prices"] = {p: prices[p] for p in self.state["holdings"] if p in prices}  # marks, for the dashboard
+        self.state["last_run"] = int(now)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self.state, indent=1), encoding="utf-8")
         return "\n".join([self.status(prices)] + lines)
