@@ -172,7 +172,7 @@ class PaperRotation:
 def last_run(data_dir: Path) -> int | None:
     """When any paper book last ran (epoch seconds), from the saved book state."""
     times = []
-    for path in data_dir.glob("rotation_*.json"):
+    for path in [*data_dir.glob("rotation_*.json"), *data_dir.glob("perps_*.json")]:
         try:
             state = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
