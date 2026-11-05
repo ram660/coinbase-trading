@@ -410,17 +410,19 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(h["missed_24h"], 3)          # hours 2 and 3 missed, hour 4 failed
         self.assertEqual([c["state"] for c in h["cells"][-6:]], ["ok", "ok", "missed", "missed", "fail", "pending"])
         self.assertEqual(h["median_duration"], 30)
-        ok = dashboard.health(dashboard._runs({"workflow_runs": runs[:3]}), marks, now=h0 + 2 * 3600 + 60)
+        ok = dashboard.health(dashboard._runs({"workflow_runs": runs[:3]}), marks, now=h0 + 90 * 60)
         self.assertEqual(ok["level"], "good")
+        late = dashboard.health(dashboard._runs({"workflow_runs": runs[:3]}), marks, now=h0 + 2 * 3600 + 60)
+        self.assertEqual(late["level"], "warning")  # nearly an hour since the books last ran
 
-    def test_due_runs_books_once_an_hour_and_brief_once_a_day(self):
+    def test_due_runs_books_every_15_minutes_and_brief_once_a_day(self):
         import json
         from cbagent.rotation_paper import due
         d = Path(tempfile.mkdtemp())
         self.assertTrue(due(d, now=1793869200)["rotate"])
         (d / "rotation_fast.json").write_text(json.dumps({"equity": [[1793869200, 1000]], "last_run": 1793869200}))
-        self.assertFalse(due(d, now=1793869200 + 20 * 60)["rotate"])
-        self.assertTrue(due(d, now=1793869200 + 46 * 60)["rotate"])
+        self.assertFalse(due(d, now=1793869200 + 10 * 60)["rotate"])
+        self.assertTrue(due(d, now=1793869200 + 13 * 60)["rotate"])
         at_15 = int(datetime(2026, 11, 5, 15, 7, tzinfo=timezone.utc).timestamp())
         self.assertFalse(due(d, now=at_15 - 3600)["brief"])
         self.assertTrue(due(d, now=at_15)["brief"])
@@ -542,7 +544,7 @@ class PerpsPaperTests(unittest.TestCase):
         self.assertAlmostEqual(b["equity"], 1010.0)
         self.assertAlmostEqual(b["stress_equity"], 1009.0)
         self.assertAlmostEqual(b["leverage"], 980 / 1010)
-        self.assertFalse(due(d, now=1793869200 + 20 * 60)["rotate"])  # perps state counts as a run
+        self.assertFalse(due(d, now=1793869200 + 10 * 60)["rotate"])  # perps state counts as a run
 
 
 class LiveGateTests(unittest.TestCase):

@@ -64,14 +64,16 @@ sells to cash first (unless `on_drawdown = "freeze"`). Either way the bot stays 
 
 ## Dashboard
 
-The hourly `paper-trading` workflow builds a dashboard of the paper books (equity over time, holdings with cost and
+The `paper-trading` workflow builds a dashboard of the paper books (equity over time, holdings with cost and
 P&L, every rebalance and fill) and of the workflow itself (hour-by-hour run strip, missed hours, success rate,
 recent runs) and publishes it to GitHub Pages at https://ram660.github.io/coinbase-trading/. One-time setup:
 Settings > Pages > Source = "GitHub Actions". The page is public because the repo is; it only shows the simulated
 books.
 
-GitHub skips scheduled runs when it is busy, so the workflow is scheduled at :07, :27 and :47 past every hour.
-`cbagent due` runs the books only when they haven't run in the last 45 minutes, and the brief on the first run after
+GitHub skips and delays scheduled runs when it is busy, so the workflow is scheduled every 5 minutes. `cbagent due`
+runs the books only when they haven't run in the last 12 minutes, so they run about every 15 minutes. Each book still
+rebalances on its own clock (fast every 4 hours, daily and perps once a day); the runs in between mark prices and, for
+perps, charge funding and check liquidation. The brief runs on the first run after
 15:00 UTC. To run by hand: Actions > paper-trading > Run workflow (tick "force" to run the books anyway).
 
 Locally, `cbagent dashboard` writes `data/dashboard/index.html` from `data/`, using live public prices if the state has

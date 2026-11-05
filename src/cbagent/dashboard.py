@@ -1,7 +1,7 @@
 """Static HTML dashboard for the paper rotation books and the GitHub Actions runs that drive them. Read-only.
 
 `collect()` turns data/ (book state, the trade journal, and optionally a GitHub Actions runs JSON) into one dict;
-`render()` embeds that dict in a self-contained page (no external scripts). The hourly workflow builds it and
+`render()` embeds that dict in a self-contained page (no external scripts). The workflow builds it every 15 minutes and
 publishes it to GitHub Pages; `cbagent dashboard` builds the same page locally.
 """
 from __future__ import annotations
@@ -179,7 +179,7 @@ def health(runs: list[dict], marks: list[int], now: int, window_hours: int = 48)
     """Hour-by-hour view of whether the books ran, plus headline numbers.
 
     Book marks (one equity point per book run) say whether the books ran; workflow runs add failures and runs in
-    progress. Several crons fire each hour and most find nothing due, so a run on its own doesn't count."""
+    progress. The cron fires every 5 minutes and most runs find nothing due, so a run on its own doesn't count."""
     marks = sorted(set(marks))
     for r in runs:
         end = r["started"] + (r["duration"] if r["duration"] is not None else 1200) + 60
@@ -217,9 +217,9 @@ def health(runs: list[dict], marks: list[int], now: int, window_hours: int = 48)
     failed_last = bool(done) and done[0]["conclusion"] not in ("success", "skipped", "cancelled")
     missed = sum(c["state"] in ("missed", "fail") for c in last24)
     durations = [r["duration"] for r in done if r["duration"] is not None and r["ran_books"]]
-    if since is None or since > 3 * HOUR or failed_last:
+    if since is None or since > 2 * HOUR or failed_last:
         level = "critical"
-    elif since > 90 * 60 or missed > 3:
+    elif since > 45 * 60 or missed > 3:
         level = "warning"
     else:
         level = "good"
@@ -399,7 +399,7 @@ a { color: var(--s1); }
   <header>
     <div>
       <h1>Paper trading dashboard</h1>
-      <div class="sub">Simulated $1,000 books run by the hourly <code>paper-trading</code> workflow. No real orders; descriptive only.</div>
+      <div class="sub">Simulated $1,000 books run every 15 minutes by the <code>paper-trading</code> workflow. No real orders; descriptive only.</div>
     </div>
     <div class="sub" id="generated"></div>
   </header>
@@ -469,7 +469,7 @@ $("generated").textContent = "Updated " + when(D.generated);
     <div class="book-head"><h2>Workflow health</h2>
       <span class="status" style="color:var(--${h.level === "good" ? "pos" : h.level})"><span class="dot" style="background:var(--${h.level})"></span>${icon} ${label}</span></div>
     <div class="tiles">${tiles.map(t => `<div class="tile"><div class="k">${t[0]}</div><div class="v">${t[1]}</div><div class="d">${t[2]}</div></div>`).join("")}</div>
-    <div class="note" style="margin-top:14px">Last 48 hours, one cell per hour. The workflow is scheduled three times an hour and runs the books once. Hover a cell for details.</div>
+    <div class="note" style="margin-top:14px">Last 48 hours, one cell per hour. The workflow is scheduled every 5 minutes and runs the books about every 15 minutes; a cell is green if they ran at least once that hour. Hover a cell for details.</div>
     <div class="chart"><div class="strip">${cells}</div><div class="tip"></div></div>
     <div class="strip-axis"><span>${when(h.cells[0].hour)}</span><span>now</span></div>
     <div class="keyrow">${["ok", "fail", "missed", "pending", "before"].map(s => `<span><span class="cell ${s}" style="${s === "missed" ? "" : "background:" + fill[s]}"></span>${words[s]}</span>`).join("")}</div>

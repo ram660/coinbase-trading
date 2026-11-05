@@ -181,9 +181,9 @@ def last_run(data_dir: Path) -> int | None:
     return max(times, default=0) or None
 
 
-def due(data_dir: Path, now: float | None = None, min_gap_minutes: int = 45, brief_hour_utc: int = 15) -> dict:
+def due(data_dir: Path, now: float | None = None, min_gap_minutes: int = 12, brief_hour_utc: int = 15) -> dict:
     """What a scheduled workflow run should do. Several crons fire each hour because GitHub drops some;
-    this keeps the books to about one run an hour and the brief to one a day."""
+    this keeps the books to about one run every 15 minutes and the brief to one a day."""
     now = now or time.time()
     last = last_run(data_dir)
     today = datetime.fromtimestamp(now, timezone.utc)
