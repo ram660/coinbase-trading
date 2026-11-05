@@ -4,9 +4,22 @@ name: paper-trading
 
 on:
   schedule:
-    - cron: "15 * * * *"   # every hour (UTC)
-    - cron: "5 15 * * *"   # brief at 15:05 UTC = 7:05 am Vancouver (PST)
+    # GitHub skips scheduled runs when it is busy, so there are three a hour. The "Decide" step runs the books only
+    # when they haven't run in the last 45 minutes, so they still run about once an hour. The brief runs on the
+    # first run from 15:00 UTC (7 am Vancouver) each day.
+    - cron: "7 * * * *"
+    - cron: "27 * * * *"
+    - cron: "47 * * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Run the books even if they ran less than 45 minutes ago"
+        type: boolean
+        default: false
+      brief:
+        description: "Also build the daily brief"
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # push state to the paper-state branch
@@ -21,6 +34,8 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
+    outputs:
+      ran: ${{ steps.due.outputs.rotate == 'true' || steps.due.outputs.brief == 'true' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -35,15 +50,21 @@ jobs:
             git checkout origin/paper-state -- data/ || true
           fi
 
+      - name: Decide what is due
+        id: due
+        run: |
+          PYTHONPATH=src python -m cbagent due ${{ inputs.force && '--force' || '' }} ${{ inputs.brief && '--brief' || '' }} | tee -a "$GITHUB_OUTPUT"
+
       - name: Run paper books
+        if: steps.due.outputs.rotate == 'true'
         run: PYTHONPATH=src python -m cbagent rotate
 
       - name: Daily brief
-        if: github.event.schedule == '5 15 * * *' || github.event_name == 'workflow_dispatch'
+        if: steps.due.outputs.brief == 'true'
         run: PYTHONPATH=src python -m cbagent brief
 
       - name: Fetch workflow run history
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && (steps.due.outputs.rotate == 'true' || steps.due.outputs.brief == 'true') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -51,18 +72,19 @@ jobs:
             > "$RUNNER_TEMP/workflow_runs.json" || echo '{}' > "$RUNNER_TEMP/workflow_runs.json"
 
       - name: Build dashboard
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && (steps.due.outputs.rotate == 'true' || steps.due.outputs.brief == 'true') }}
         run: |
           PYTHONPATH=src python -m cbagent dashboard --out "$RUNNER_TEMP/site/index.html" \
             --runs "$RUNNER_TEMP/workflow_runs.json" --repo "$GITHUB_REPOSITORY"
 
       - name: Upload dashboard
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && (steps.due.outputs.rotate == 'true' || steps.due.outputs.brief == 'true') }}
         uses: actions/upload-pages-artifact@v3
         with:
           path: ${{ runner.temp }}/site
 
       - name: Save state to the paper-state branch
+        if: steps.due.outputs.rotate == 'true' || steps.due.outputs.brief == 'true'
         run: |
           git config user.name "paper-trading-bot"
           git config user.email "paper-trading-bot@users.noreply.github.com"
@@ -82,7 +104,7 @@ jobs:
   # job fails on its own without failing the paper run.
   dashboard:
     needs: run
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.run.outputs.ran == 'true' }}
     runs-on: ubuntu-latest
     continue-on-error: true
     environment:

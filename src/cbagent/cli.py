@@ -172,6 +172,17 @@ def cmd_rotate(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_due(cfg: Config, args) -> int:
+    """Print what this hour's workflow run should do, as key=value lines for $GITHUB_OUTPUT. Read-only."""
+    from .rotation_paper import due
+
+    d = due(cfg.data_dir, min_gap_minutes=args.min_gap)
+    print(f"rotate={str(d['rotate'] or args.force).lower()}")
+    print(f"brief={str(d['brief'] or args.brief).lower()}")
+    print(f"minutes_since_last={d['minutes_since_last']}")
+    return 0
+
+
 def cmd_dashboard(cfg: Config, args) -> int:
     """Static HTML page of the paper books and workflow runs, from data/. Read-only."""
     from . import dashboard
@@ -338,6 +349,12 @@ def main(argv: list[str] | None = None) -> int:
     ro.add_argument("--status", action="store_true", help="show equity and holdings without trading")
     ro.add_argument("--force", action="store_true", help="rebalance now even if not due")
     ro.set_defaults(fn=cmd_rotate)
+
+    du = sub.add_parser("due", help="whether the books and the brief are due this hour (for the workflow)")
+    du.add_argument("--min-gap", type=int, default=45, help="minutes since the last run before the books run again")
+    du.add_argument("--force", action="store_true", help="say the books are due regardless")
+    du.add_argument("--brief", action="store_true", help="say the brief is due regardless")
+    du.set_defaults(fn=cmd_due)
 
     db = sub.add_parser("dashboard", help="HTML page of the paper books, trades and workflow runs (read-only)")
     db.add_argument("--out", default=None, help="output file (default data/dashboard/index.html)")

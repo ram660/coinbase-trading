@@ -130,9 +130,16 @@ def _runs(raw: dict | list | None) -> list[dict]:
 
 
 def health(runs: list[dict], marks: list[int], now: int, window_hours: int = 48) -> dict:
-    """Hour-by-hour view of whether the workflow ran, plus headline numbers. Falls back to book marks without runs."""
-    starts = sorted(r["started"] for r in runs) or sorted(set(marks))
-    first = starts[0] if starts else now
+    """Hour-by-hour view of whether the books ran, plus headline numbers.
+
+    Book marks (one equity point per book run) say whether the books ran; workflow runs add failures and runs in
+    progress. Several crons fire each hour and most find nothing due, so a run on its own doesn't count."""
+    marks = sorted(set(marks))
+    for r in runs:
+        end = r["started"] + (r["duration"] if r["duration"] is not None else 1200) + 60
+        r["ran_books"] = any(r["started"] - 60 <= m <= end for m in marks)
+    starts = [r["started"] for r in runs] + marks
+    first = min(starts) if starts else now
     by_hour: dict[int, list[dict]] = {}
     for r in runs:
         by_hour.setdefault(r["started"] // HOUR, []).append(r)
@@ -140,14 +147,15 @@ def health(runs: list[dict], marks: list[int], now: int, window_hours: int = 48)
     cells = []
     this_hour = now // HOUR
     for h in range(this_hour - window_hours + 1, this_hour + 1):
+        cons = {r["conclusion"] for r in by_hour.get(h, [])}
         if (h + 1) * HOUR <= first:
             state = "before"
-        elif h in by_hour:
-            cons = {r["conclusion"] for r in by_hour[h]}
-            state = "fail" if cons & {"failure", "timed_out", "startup_failure"} else \
-                "ok" if "success" in cons else "running" if cons & {"in_progress", "queued"} else "other"
-        elif not runs and h in mark_hours:
+        elif h in mark_hours:
             state = "ok"
+        elif cons & {"failure", "timed_out", "startup_failure"}:
+            state = "fail"
+        elif cons & {"in_progress", "queued"}:
+            state = "running"
         elif h == this_hour:
             state = "pending"
         else:
@@ -155,14 +163,14 @@ def health(runs: list[dict], marks: list[int], now: int, window_hours: int = 48)
         cells.append({"hour": h * HOUR, "state": state, "runs": [r["number"] for r in by_hour.get(h, [])]})
 
     last24 = [c for c in cells[-25:-1] if c["state"] != "before"]
-    gaps = [b - a for a, b in zip(starts, starts[1:])]
+    gaps = [b - a for a, b in zip(marks, marks[1:])]
     done = [r for r in runs if r["status"] == "completed"]
     ok = [r for r in done if r["conclusion"] == "success"]
-    last_ok = max((r["started"] for r in ok), default=None) if runs else (max(marks) if marks else None)
+    last_ok = marks[-1] if marks else None
     since = now - last_ok if last_ok else None
     failed_last = bool(done) and done[0]["conclusion"] not in ("success", "skipped", "cancelled")
-    missed = sum(c["state"] == "missed" for c in last24)
-    durations = [r["duration"] for r in done if r["duration"] is not None]
+    missed = sum(c["state"] in ("missed", "fail") for c in last24)
+    durations = [r["duration"] for r in done if r["duration"] is not None and r["ran_books"]]
     if since is None or since > 3 * HOUR or failed_last:
         level = "critical"
     elif since > 90 * 60 or missed > 3:
@@ -175,13 +183,13 @@ def health(runs: list[dict], marks: list[int], now: int, window_hours: int = 48)
         "last_ok": last_ok,
         "failed_last": failed_last,
         "hours_checked": len(last24),
-        "hours_with_run": sum(c["state"] in ("ok", "fail", "running", "other") for c in last24),
+        "hours_with_run": sum(c["state"] == "ok" for c in last24),
         "missed_24h": missed,
         "success_rate": len(ok) / len(done) if done else None,
         "completed": len(done),
         "longest_gap": max(gaps) if gaps else None,
         "median_duration": statistics.median(durations) if durations else None,
-        "source": "GitHub Actions runs" if runs else "book marks (no runs file)",
+        "source": "book runs saved in paper-state" + (", plus GitHub Actions runs" if runs else ""),
         "cells": cells,
     }
 
@@ -366,6 +374,7 @@ a { color: var(--s1); }
   </section>
   <section class="card">
     <h2>Workflow runs</h2>
+    <div class="filters" id="runs-filter"></div>
     <div class="scroll" id="runs"></div>
   </section>
   <section class="card" id="errors-card" hidden>
@@ -399,20 +408,20 @@ $("generated").textContent = "Updated " + when(D.generated);
   const label = {good: "Healthy", warning: "Needs a look", critical: "Not running"}[h.level];
   const icon = {good: "✓", warning: "!", critical: "✕"}[h.level];
   const tiles = [
-    ["Last successful run", h.since_last_ok == null ? "never" : ago(h.since_last_ok) + " ago", when(h.last_ok)],
-    ["Hours with a run, last 24", `${h.hours_with_run} / ${h.hours_checked}`, `${h.missed_24h} hourly runs missed`],
-    ["Success rate", h.success_rate == null ? "—" : Math.round(h.success_rate * 100) + "%", `${h.completed} completed runs`],
-    ["Longest gap between runs", ago(h.longest_gap), h.median_duration ? `runs take about ${Math.round(h.median_duration)} s` : ""],
+    ["Books last ran", h.since_last_ok == null ? "never" : ago(h.since_last_ok) + " ago", when(h.last_ok)],
+    ["Hours the books ran, last 24", `${h.hours_with_run} / ${h.hours_checked}`, `${h.missed_24h} hours missed`],
+    ["Workflow success rate", h.success_rate == null ? "—" : Math.round(h.success_rate * 100) + "%", `${h.completed} completed runs`],
+    ["Longest gap between book runs", ago(h.longest_gap), h.median_duration ? `runs take about ${Math.round(h.median_duration)} s` : ""],
   ];
   const fill = {ok: "var(--good)", fail: "var(--critical)", running: "var(--warning)", other: "var(--neutral)", pending: "var(--neutral)", before: "var(--before)"};
-  const words = {ok: "ran OK", fail: "failed", running: "running", other: "cancelled or skipped", pending: "this hour, not run yet", missed: "no run (missed)", before: "before the first run"};
+  const words = {ok: "books ran", fail: "failed", running: "running", other: "cancelled or skipped", pending: "this hour, not run yet", missed: "no run (missed)", before: "before the first run"};
   const cells = h.cells.map(c => `<div class="cell ${c.state}" style="${c.state === "missed" ? "" : "background:" + fill[c.state]}"
     data-tip="${esc(when(c.hour) + ": " + words[c.state] + (c.runs.length ? " (run #" + c.runs.join(", #") + ")" : ""))}"></div>`).join("");
   $("health").innerHTML = `
     <div class="book-head"><h2>Workflow health</h2>
       <span class="status" style="color:var(--${h.level === "good" ? "pos" : h.level})"><span class="dot" style="background:var(--${h.level})"></span>${icon} ${label}</span></div>
     <div class="tiles">${tiles.map(t => `<div class="tile"><div class="k">${t[0]}</div><div class="v">${t[1]}</div><div class="d">${t[2]}</div></div>`).join("")}</div>
-    <div class="note" style="margin-top:14px">Last 48 hours, one cell per hour (scheduled at :15 past each hour). Hover a cell for details.</div>
+    <div class="note" style="margin-top:14px">Last 48 hours, one cell per hour. The workflow is scheduled three times an hour and runs the books once. Hover a cell for details.</div>
     <div class="chart"><div class="strip">${cells}</div><div class="tip"></div></div>
     <div class="strip-axis"><span>${when(h.cells[0].hour)}</span><span>now</span></div>
     <div class="keyrow">${["ok", "fail", "missed", "pending", "before"].map(s => `<span><span class="cell ${s}" style="${s === "missed" ? "" : "background:" + fill[s]}"></span>${words[s]}</span>`).join("")}</div>
@@ -532,9 +541,12 @@ $("rebalances").innerHTML = table([["When"], ["Book"], ["Trades", "n"], ["Equity
 
 // ---- runs
 (() => {
-  const st = {success: ["good", "✓ success"], failure: ["critical", "✕ failed"], timed_out: ["critical", "✕ timed out"],
+  const st = {success: ["good", "✓ ran the books"], failure: ["critical", "✕ failed"], timed_out: ["critical", "✕ timed out"],
     cancelled: ["neutral", "– cancelled"], in_progress: ["warning", "… running"], queued: ["warning", "… queued"]};
-  const rows = D.runs.slice(0, 100).map(r => { const s = st[r.conclusion] || ["neutral", r.conclusion];
+  let all = false;
+  const draw = () => {
+  const shown = D.runs.filter(r => all || r.ran_books || r.conclusion !== "success");
+  const rows = shown.slice(0, 100).map(r => { const s = r.conclusion === "success" && !r.ran_books ? ["neutral", "– nothing due"] : st[r.conclusion] || ["neutral", r.conclusion];
     return `<tr><td>${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">#${r.number}</a>` : "#" + r.number}</td><td>${when(r.started)}</td>
       <td>${r.event === "schedule" ? "Scheduled" : r.event === "workflow_dispatch" ? "Manual" : esc(r.event)}</td>
       <td><span class="status" style="font-weight:500"><span class="dot" style="background:var(--${s[0]})"></span>${esc(s[1])}</span></td>
@@ -542,6 +554,11 @@ $("rebalances").innerHTML = table([["When"], ["Book"], ["Trades", "n"], ["Equity
   const link = D.repo ? ` <a href="https://github.com/${esc(D.repo)}/actions/workflows/paper-trading.yml" target="_blank" rel="noopener">All runs on GitHub</a>` : "";
   $("runs").innerHTML = table([["Run"], ["Started"], ["Trigger"], ["Result"], ["Duration", "n"]], rows,
     "No run history in this build (it is fetched when the page is built by the workflow).") + `<div class="note">${D.runs.some(r => r.status !== "completed") ? "The run still in progress is the one that built this page. " : ""}${link}</div>`;
+  const hidden = D.runs.length - shown.length;
+  $("runs-filter").innerHTML = `<button aria-pressed="${!all}" data-a="0">Runs that did something</button><button aria-pressed="${all}" data-a="1">All runs${hidden ? ` (+${hidden} with nothing due)` : ""}</button>`;
+  };
+  $("runs-filter").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { all = b.dataset.a === "1"; draw(); } });
+  draw();
 })();
 
 // ---- errors

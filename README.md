@@ -70,6 +70,10 @@ recent runs) and publishes it to GitHub Pages at https://ram660.github.io/coinba
 Settings > Pages > Source = "GitHub Actions". The page is public because the repo is; it only shows the simulated
 books.
 
+GitHub skips scheduled runs when it is busy, so the workflow is scheduled at :07, :27 and :47 past every hour.
+`cbagent due` runs the books only when they haven't run in the last 45 minutes, and the brief on the first run after
+15:00 UTC. To run by hand: Actions > paper-trading > Run workflow (tick "force" to run the books anyway).
+
 Locally, `cbagent dashboard` writes `data/dashboard/index.html` from `data/`, using live public prices if the state has
 no marks yet. Add `--runs file.json` (the GitHub runs API response) to include the workflow section.
 

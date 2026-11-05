@@ -167,3 +167,28 @@ class PaperRotation:
         held = ", ".join(f"{p.split('-')[0]} {q * prices.get(p, 0):.0f}" for p, q in self.state["holdings"].items()) or "all cash"
         return (f"[{self.book.name}] equity {equity:.2f} ({(equity / start - 1) * 100:+.2f}% since start), "
                 f"fees {self.state['fees']:.2f}, holding: {held}")
+
+
+def last_run(data_dir: Path) -> int | None:
+    """When any paper book last ran (epoch seconds), from the saved book state."""
+    times = []
+    for path in data_dir.glob("rotation_*.json"):
+        try:
+            state = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        times += [int(state.get("last_run") or 0)] + [int(t) for t, _ in state.get("equity", [])[-1:]]
+    return max(times, default=0) or None
+
+
+def due(data_dir: Path, now: float | None = None, min_gap_minutes: int = 45, brief_hour_utc: int = 15) -> dict:
+    """What a scheduled workflow run should do. Several crons fire each hour because GitHub drops some;
+    this keeps the books to about one run an hour and the brief to one a day."""
+    now = now or time.time()
+    last = last_run(data_dir)
+    today = datetime.fromtimestamp(now, timezone.utc)
+    return {
+        "rotate": last is None or now - last >= min_gap_minutes * 60,
+        "brief": today.hour >= brief_hour_utc and not (data_dir / "briefs" / f"brief_{today:%Y-%m-%d}.md").exists(),
+        "minutes_since_last": None if last is None else round((now - last) / 60),
+    }

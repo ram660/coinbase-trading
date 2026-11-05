@@ -397,18 +397,36 @@ class DashboardTests(unittest.TestCase):
     def test_health_counts_missed_hours_and_failures(self):
         from cbagent import dashboard
         h0 = 1793869200 - 1793869200 % 3600
-        runs = [{"run_number": i, "event": "schedule", "status": "completed", "conclusion": c,
-                 "run_started_at": datetime.fromtimestamp(h0 + i * 3600 + 900, timezone.utc).isoformat(),
-                 "updated_at": datetime.fromtimestamp(h0 + i * 3600 + 930, timezone.utc).isoformat()}
-                for i, c in [(0, "success"), (1, "success"), (4, "failure")]]
-        h = dashboard.health(dashboard._runs({"workflow_runs": runs}), [], now=h0 + 5 * 3600 + 60)
-        self.assertEqual(h["level"], "critical")  # last run failed
-        self.assertEqual(h["missed_24h"], 2)       # hours 2 and 3
-        self.assertEqual(h["hours_with_run"], 3)
+        iso = lambda t: datetime.fromtimestamp(t, timezone.utc).isoformat()
+        runs = [{"run_number": n, "event": "schedule", "status": "completed", "conclusion": c,
+                 "run_started_at": iso(h0 + m * 60), "updated_at": iso(h0 + m * 60 + 30)}
+                for n, m, c in [(1, 7, "success"), (2, 27, "success"), (3, 67, "success"), (4, 247, "failure")]]
+        marks = [h0 + 7 * 60 + 20, h0 + 67 * 60 + 20]   # runs 1 and 3 ran the books, run 2 found nothing due
+        parsed = dashboard._runs({"workflow_runs": runs})
+        h = dashboard.health(parsed, marks, now=h0 + 5 * 3600 + 60)
+        self.assertEqual([r["ran_books"] for r in reversed(parsed)], [True, False, True, False])
+        self.assertEqual(h["level"], "critical")      # last run failed
+        self.assertEqual(h["hours_with_run"], 2)
+        self.assertEqual(h["missed_24h"], 3)          # hours 2 and 3 missed, hour 4 failed
+        self.assertEqual([c["state"] for c in h["cells"][-6:]], ["ok", "ok", "missed", "missed", "fail", "pending"])
         self.assertEqual(h["median_duration"], 30)
-        self.assertEqual(h["cells"][-1]["state"], "pending")
-        ok = dashboard.health(dashboard._runs({"workflow_runs": runs[:2]}), [], now=h0 + 3600 + 1800)
+        ok = dashboard.health(dashboard._runs({"workflow_runs": runs[:3]}), marks, now=h0 + 2 * 3600 + 60)
         self.assertEqual(ok["level"], "good")
+
+    def test_due_runs_books_once_an_hour_and_brief_once_a_day(self):
+        import json
+        from cbagent.rotation_paper import due
+        d = Path(tempfile.mkdtemp())
+        self.assertTrue(due(d, now=1793869200)["rotate"])
+        (d / "rotation_fast.json").write_text(json.dumps({"equity": [[1793869200, 1000]], "last_run": 1793869200}))
+        self.assertFalse(due(d, now=1793869200 + 20 * 60)["rotate"])
+        self.assertTrue(due(d, now=1793869200 + 46 * 60)["rotate"])
+        at_15 = int(datetime(2026, 11, 5, 15, 7, tzinfo=timezone.utc).timestamp())
+        self.assertFalse(due(d, now=at_15 - 3600)["brief"])
+        self.assertTrue(due(d, now=at_15)["brief"])
+        (d / "briefs").mkdir()
+        (d / "briefs" / "brief_2026-11-05.md").write_text("x")
+        self.assertFalse(due(d, now=at_15)["brief"])
 
 
 class LiveGateTests(unittest.TestCase):
