@@ -6,3 +6,4 @@
 {"ts": "2026-11-05T05:32:49.099839+00:00", "book": "fast", "event": "fill", "product": "INJ-USDC", "side": "BUY", "qty": 41.200710441034346, "price": 8.050023, "fee": 1.6666666666666665}
 {"ts": "2026-11-05T05:32:49.099883+00:00", "book": "fast", "event": "fill", "product": "DRV-USDC", "side": "BUY", "qty": 887.1488645290292, "price": 0.373856835, "fee": 1.6666666666666665}
 {"ts": "2026-11-05T05:32:49.099926+00:00", "book": "fast", "event": "rebalance", "note": "picks: CAP-USDC (1.79), INJ-USDC (1.70), DRV-USDC (1.65)", "equity": 994.5027486256871}
+{"ts": "2026-11-05T14:33:09.825420+00:00", "book": "fast", "event": "rebalance", "note": "picks: INJ-USDC (1.99), CAP-USDC (1.96), DRV-USDC (1.30)", "equity": 1007.9187525717831}
