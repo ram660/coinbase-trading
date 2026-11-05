@@ -71,9 +71,9 @@ Settings > Pages > Source = "GitHub Actions". The page is public because the rep
 books.
 
 GitHub skips and delays scheduled runs when it is busy, so the workflow is scheduled every 5 minutes. `cbagent due`
-runs the books only when they haven't run in the last 12 minutes, so they run about every 15 minutes. Each book still
-rebalances on its own clock (fast every 4 hours, daily and perps once a day); the runs in between mark prices and, for
-perps, charge funding and check liquidation. The brief runs on the first run after
+runs the books only when they haven't run in the last 12 minutes, so they run about every 15 minutes. Every run also
+rebalances each book. The daily and perps books read closed daily candles, so most of their runs change nothing; the
+fast book reads hourly candles. Adjustments under 2% of equity (5% for perps) are skipped to save fees. The brief runs on the first run after
 15:00 UTC. To run by hand: Actions > paper-trading > Run workflow (tick "force" to run the books anyway).
 
 Locally, `cbagent dashboard` writes `data/dashboard/index.html` from `data/`, using live public prices if the state has
@@ -91,7 +91,7 @@ buy-and-hold, and kill-switch trips. Use it before trusting any single backtest.
 `ETP-20DEC30-CDE` for ETH). It is simulated money only: there is no live perps broker, and building one is a
 separate decision.
 
-- Once a day it goes long when the daily close is above both its 50- and 200-day averages, short when below both,
+- Every 15 minutes it checks the signal: long when the daily close is above both its 50- and 200-day averages, short when below both,
   flat otherwise. Each position is sized to about 50% annual volatility, at most 2x leverage in total, in whole
   contracts (0.01 BTC, 0.1 ETH).
 - Every hour it charges funding, estimated from the perp's premium over spot because the public API doesn't publish

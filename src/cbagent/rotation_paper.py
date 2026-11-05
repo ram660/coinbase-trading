@@ -28,7 +28,7 @@ class Book:
     vol_bars: int          # bars of volatility for the risk adjustment
     trend_bars: int        # a coin must close above its average over this many bars
     btc_filter_bars: int   # 0 = no filter; else only hold coins while BTC is above this many-bar average
-    rebalance_hours: int
+    rebalance_hours: float
     description: str
     starting_cash: float = 1000.0
     fee_pct: float = 0.5
@@ -38,9 +38,9 @@ class Book:
 
 BOOKS = {
     "daily": Book("daily", "ONE_DAY", top_n=3, lookback=30, vol_bars=30, trend_bars=50, btc_filter_bars=200,
-                  rebalance_hours=24, description="Tested: top 3 by 30-day momentum, daily, only while BTC > 200-day average"),
+                  rebalance_hours=0.25, description="Top 3 by 30-day momentum, only while BTC > 200-day average; tested with daily rebalancing, now checked every 15 minutes"),
     "fast": Book("fast", "ONE_HOUR", top_n=3, lookback=72, vol_bars=48, trend_bars=50, btc_filter_bars=200,
-                 rebalance_hours=4, description="Aggressive, untested: top 3 by 3-day momentum on hourly data, every 4 hours"),
+                 rebalance_hours=0.25, description="Aggressive, untested: top 3 by 3-day momentum on hourly data, rebalanced every 15 minutes"),
 }
 
 
