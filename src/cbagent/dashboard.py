@@ -109,6 +109,52 @@ def _book(name: str, state: dict, journal: list[dict], fallback_prices: Callable
     }
 
 
+def _perp_book(name: str, state: dict) -> dict:
+    """A perps book in the same shape as a spot book: holdings are open positions (negative qty = short), value is
+    signed notional, cost is entry notional, weight is leverage."""
+    from .perps_paper import BOOK, MARKETS
+    start = BOOK.starting_cash
+    prices = state.get("prices") or {}
+    rows = []
+    for a, p in (state.get("positions") or {}).items():
+        size = MARKETS[a].contract_size if a in MARKETS else 1.0
+        qty = p["contracts"] * size
+        px = prices.get(a, p["entry"])
+        rows.append({"product": f"{a}-PERP", "qty": qty, "price": px, "price_source": "last hourly mark",
+                     "value": qty * px, "cost": qty * p["entry"], "pnl": qty * (px - p["entry"])})
+    cash = float(state.get("cash", 0.0))
+    equity = cash + sum(r["pnl"] for r in rows)
+    for r in rows:
+        r["weight"] = r["value"] / equity if equity else 0.0
+    series = [[int(t), float(v)] for t, v in state.get("equity", [])]
+    fees, stress = float(state.get("fees", 0.0)), float(state.get("fees_stress", 0.0))
+    return {
+        "name": name,
+        "kind": "perps",
+        "description": BOOK.description,
+        "rebalance_hours": BOOK.rebalance_hours,
+        "start": start,
+        "equity": equity,
+        "pnl": equity - start,
+        "pct": (equity / start - 1) * 100 if start else 0.0,
+        "cash": cash,  # collateral after realized P&L, fees and funding
+        "fees": fees,
+        "funding": float(state.get("funding", 0.0)),
+        "stress_equity": equity - (stress - fees),
+        "stress_fee_pct": BOOK.stress_fee_pct,
+        "leverage": sum(abs(r["value"]) for r in rows) / equity if equity > 0 else 0.0,
+        "stopped": bool(state.get("stopped")),
+        "liquidations": int(state.get("liquidations", 0)),
+        "realized": float(state.get("realized", 0.0)),
+        "unrealized": sum(r["pnl"] for r in rows),
+        "holdings": sorted(rows, key=lambda r: -abs(r["value"])),
+        "series": series,
+        "last_mark": series[-1][0] if series else None,
+        "last_rebalance": int(state.get("last_rebalance") or 0) or None,
+        "peak": max([v for _, v in series] + [start]),
+    }
+
+
 def _runs(raw: dict | list | None) -> list[dict]:
     items = raw.get("workflow_runs", []) if isinstance(raw, dict) else (raw or [])
     out = []
@@ -202,7 +248,9 @@ def collect(data_dir: Path, runs_raw: dict | list | None = None, repo: str = "",
     for path in sorted(data_dir.glob("rotation_*.json")):
         name = path.stem.removeprefix("rotation_")
         books.append(_book(name, json.loads(path.read_text(encoding="utf-8")), journal, fallback_prices))
-    order = {"fast": 0, "daily": 1}
+    for path in sorted(data_dir.glob("perps_*.json")):
+        books.append(_perp_book(path.stem.removeprefix("perps_"), json.loads(path.read_text(encoding="utf-8"))))
+    order = {"fast": 0, "daily": 1, "perps": 2}
     books.sort(key=lambda b: (order.get(b["name"], 9), b["name"]))
 
     fills = [{"t": r["t"], "book": r["book"], "side": r["side"], "product": r["product"], "qty": r["qty"],
@@ -274,7 +322,7 @@ _TEMPLATE = r"""<!doctype html>
   color-scheme: light;
   --bg: #f4f4f2; --surface: #fcfcfb; --border: #e3e2de; --grid: #ecebe8;
   --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
-  --s1: #2a78d6; --s2: #eb6834;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1a9a6c;
   --good: #0ca30c; --warning: #b77f00; --critical: #d03b3b; --neutral: #b9b8b2; --before: #ecebe8;
   --pos: #0b7a0b; --neg: #c02f2f;
 }
@@ -283,7 +331,7 @@ _TEMPLATE = r"""<!doctype html>
     color-scheme: dark;
     --bg: #111110; --surface: #1a1a19; --border: #2c2c2a; --grid: #262624;
     --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86;
-    --s1: #3987e5; --s2: #d95926;
+    --s1: #3987e5; --s2: #d95926; --s3: #2fb383;
     --good: #0ca30c; --warning: #fab219; --critical: #e66767; --neutral: #4a4a46; --before: #222220;
     --pos: #3cc43c; --neg: #ef7b7b;
   }
@@ -292,7 +340,7 @@ _TEMPLATE = r"""<!doctype html>
   color-scheme: dark;
   --bg: #111110; --surface: #1a1a19; --border: #2c2c2a; --grid: #262624;
   --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86;
-  --s1: #3987e5; --s2: #d95926;
+  --s1: #3987e5; --s2: #d95926; --s3: #2fb383;
   --good: #0ca30c; --warning: #fab219; --critical: #e66767; --neutral: #4a4a46; --before: #222220;
   --pos: #3cc43c; --neg: #ef7b7b;
 }
@@ -384,7 +432,7 @@ a { color: var(--s1); }
 </main>
 <script>
 const D = __DATA__;
-const COLORS = {fast: "var(--s1)", daily: "var(--s2)"};
+const COLORS = {fast: "var(--s1)", daily: "var(--s2)", perps: "var(--s3)"};
 const color = n => COLORS[n] || "var(--muted)";
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -496,7 +544,7 @@ $("generated").textContent = "Updated " + when(D.generated);
 $("books").innerHTML = D.books.map(b => {
   const rows = b.holdings.map(h => `<tr><td>${esc(coin(h.product))}</td><td class="n">${num(h.qty)}</td><td class="n" title="${esc(h.price_source)}">${num(h.price)}</td>
     <td class="n">${usd(h.value)}</td><td class="n">${(h.weight * 100).toFixed(1)}%</td><td class="n">${usd(h.cost)}</td><td class="n ${cls(h.pnl)}">${signed(h.pnl)}</td></tr>`);
-  if (b.cash > 0.005) rows.push(`<tr><td>Cash</td><td></td><td></td><td class="n">${usd(b.cash)}</td><td class="n">${(b.cash / b.equity * 100).toFixed(1)}%</td><td></td><td></td></tr>`);
+  if (b.cash > 0.005) rows.push(`<tr><td>${b.kind === "perps" ? "Collateral" : "Cash"}</td><td></td><td></td><td class="n">${usd(b.cash)}</td><td class="n">${(b.cash / b.equity * 100).toFixed(1)}%</td><td></td><td></td></tr>`);
   const dd = b.peak > 0 ? (b.equity / b.peak - 1) * 100 : 0;
   const src = [...new Set(b.holdings.map(h => h.price_source))].join(", ");
   return `<div class="card">
@@ -511,9 +559,14 @@ $("books").innerHTML = D.books.map(b => {
       <div><span>From peak</span><b class="${cls(dd)}">${pct(dd)}</b></div>
       <div><span>Last rebalance</span><b>${when(b.last_rebalance)}</b></div>
       <div><span>Last marked</span><b>${when(b.last_mark)}</b></div>
+      ${b.kind === "perps" ? `<div><span>Leverage</span><b>${b.leverage.toFixed(2)}x</b></div>
+      <div><span>Funding paid</span><b class="${cls(-b.funding)}">${usd(b.funding)}</b></div>
+      <div><span>At ${b.stress_fee_pct}% fees</span><b>${usd(b.stress_equity)}</b></div>
+      <div><span>Liquidations</span><b>${b.liquidations}${b.stopped ? " · stopped" : ""}</b></div>` : ""}
     </div>
     <div class="scroll">${table([["Coin"], ["Qty", "n"], ["Price", "n"], ["Value", "n"], ["Weight", "n"], ["Cost", "n"], ["P&amp;L", "n"]], rows, "All cash.")}</div>
-    ${src ? `<div class="note">Prices: ${esc(src)}. Cost includes the 0.5% simulated fee.</div>` : ""}
+    ${b.kind === "perps" ? `<div class="note">Negative quantity is a short. Value is notional, weight is leverage, cost is entry notional. Fees are 0.02% plus $0.11 a contract; funding is estimated from the perp's premium over spot.</div>`
+      : src ? `<div class="note">Prices: ${esc(src)}. Cost includes the 0.5% simulated fee.</div>` : ""}
   </div>`;
 }).join("") || `<div class="card empty">No paper books found in data/.</div>`;
 

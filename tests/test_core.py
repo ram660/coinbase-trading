@@ -429,6 +429,122 @@ class DashboardTests(unittest.TestCase):
         self.assertFalse(due(d, now=at_15)["brief"])
 
 
+class PerpsPaperTests(unittest.TestCase):
+    """The perps paper book: trend signal, sizing, fees, funding, liquidation and the drawdown stop."""
+
+    def _book(self, perp_prices, spot_daily, premium=0.0, start=1_000_000):
+        from cbagent import perps_paper as pp
+        state = {"perp": dict(perp_prices), "low": {}, "high": {}}
+
+        def fetch(pid, gran, n):
+            asset = "BTC" if pid.startswith(("BIP", "BTC")) else "ETH"
+            if gran == "ONE_DAY":
+                return [Candle(start - (len(spot_daily[asset]) - i) * 86400, c, c, c, c, 1)
+                        for i, c in enumerate(spot_daily[asset])]
+            px = state["perp"][asset]
+            if pid.endswith("-USD"):  # spot
+                return [Candle(start, px, px, px, px / (1 + premium), 1)]
+            lo, hi = state["low"].get(asset, px), state["high"].get(asset, px)
+            return [Candle(start - 3600 * k, px, max(hi, px), min(lo, px), px, 1) for k in range(n, 0, -1)]
+
+        book = pp.PaperPerps(Path(tempfile.mkdtemp()), fetch=fetch)
+        return book, state
+
+    def test_signal_and_weights(self):
+        from cbagent import perps_paper as pp
+        up = [100 * 1.01 ** i * (1 + 0.02 * (i % 2)) for i in range(220)]
+        down = [100 * 0.99 ** i * (1 + 0.02 * (i % 2)) for i in range(220)]
+        self.assertEqual(pp.signal(up), 1)
+        self.assertEqual(pp.signal(down), -1)
+        self.assertEqual(pp.signal(up[:100]), 0)  # not enough history
+        w = pp.target_weights({"BTC": up, "ETH": down})
+        self.assertGreater(w["BTC"], 0)
+        self.assertLess(w["ETH"], 0)
+        self.assertLessEqual(sum(abs(v) for v in w.values()), pp.BOOK.max_leverage + 1e-9)
+        calm = [100 * 1.001 ** i for i in range(220)]  # tiny volatility would ask for huge size: capped
+        self.assertLessEqual(sum(abs(v) for v in pp.target_weights({"BTC": calm, "ETH": calm}).values()), 2.0 + 1e-9)
+
+    def test_rebalance_in_whole_contracts_with_fees(self):
+        up = [100 * 1.01 ** i * (1 + 0.02 * (i % 2)) for i in range(220)]
+        book, _ = self._book({"BTC": 50000.0, "ETH": 2000.0}, {"BTC": up, "ETH": up})
+        book.run(now=1_000_000)
+        pos = book.state["positions"]
+        self.assertGreater(pos["BTC"]["contracts"], 0)
+        self.assertIsInstance(pos["BTC"]["contracts"], int)
+        self.assertLessEqual(book.notional({"BTC": 50000.0, "ETH": 2000.0}), 2 * 1000 + 1)
+        contracts = sum(abs(p["contracts"]) for p in pos.values())
+        self.assertGreater(book.state["fees"], contracts * 0.11)
+        self.assertGreater(book.state["fees_stress"], book.state["fees"])
+        self.assertLess(book.equity({"BTC": 50000.0, "ETH": 2000.0}), 1000)
+
+    def test_funding_long_pays_premium(self):
+        up = [100 * 1.01 ** i * (1 + 0.02 * (i % 2)) for i in range(220)]
+        book, _ = self._book({"BTC": 50000.0, "ETH": 2000.0}, {"BTC": up, "ETH": up}, premium=0.0024)
+        book.run(now=1_000_000)
+        cash = book.state["cash"]
+        notional = book.notional({"BTC": 50000.0, "ETH": 2000.0})
+        book.run(now=1_000_000 + 10 * 3600)
+        # 0.24% premium -> 0.01% an hour, 10 hours, longs pay
+        self.assertAlmostEqual(book.state["funding"], notional * 0.0001 * 10, delta=0.01)
+        self.assertAlmostEqual(book.state["cash"], cash - book.state["funding"], delta=0.01)
+
+    def test_short_profits_when_price_falls(self):
+        down = [100 * 0.99 ** i * (1 + 0.02 * (i % 2)) for i in range(220)]
+        book, st = self._book({"BTC": 50000.0, "ETH": 2000.0}, {"BTC": down, "ETH": down})
+        book.run(now=1_000_000)
+        self.assertLess(book.state["positions"]["BTC"]["contracts"], 0)
+        before = book.equity({"BTC": 50000.0, "ETH": 2000.0})
+        st["perp"] = {"BTC": 45000.0, "ETH": 1800.0}
+        book.run(now=1_000_000 + 3600)
+        self.assertGreater(book.equity(st["perp"]), before + 100)
+
+    def test_wick_liquidates_and_drawdown_stops(self):
+        from cbagent import perps_paper as pp
+        up = [100 * 1.01 ** i * (1 + 0.02 * (i % 2)) for i in range(220)]
+        book, st = self._book({"BTC": 50000.0, "ETH": 2000.0}, {"BTC": up, "ETH": up})
+        book.run(now=1_000_000)
+        self.assertTrue(book.state["positions"])
+        st["low"] = {"BTC": 2500.0, "ETH": 100.0}  # a 95% wick inside the hour
+        out = book.run(now=1_000_000 + 3600)
+        self.assertIn("LIQUIDATED", out)
+        self.assertEqual(book.state["positions"], {})
+        self.assertEqual(book.state["liquidations"], 1)
+        self.assertTrue(book.state["stopped"])
+        book.run(now=1_000_000 + 2 * 86400)  # stopped books stay flat
+        self.assertEqual(book.state["positions"], {})
+        self.assertEqual(book.journal.read_text().count('"event": "liquidation"'), 1)
+        self.assertTrue(pp.PaperPerps(book.data_dir).state["stopped"])  # survives a restart
+
+    def test_kill_switch_blocks_rebalance(self):
+        up = [100 * 1.01 ** i * (1 + 0.02 * (i % 2)) for i in range(220)]
+        book, _ = self._book({"BTC": 50000.0, "ETH": 2000.0}, {"BTC": up, "ETH": up})
+        (book.data_dir / "KILL_SWITCH").write_text("x")
+        self.assertIn("kill switch", book.run(now=1_000_000))
+        self.assertEqual(book.state["positions"], {})
+
+    def test_backtest_and_dashboard(self):
+        import json
+        from cbagent import dashboard, perps_paper as pp
+        from cbagent.rotation_paper import due
+        up = [100 * 1.002 ** i * (1 + 0.01 * (i % 3)) for i in range(400)]
+        r = pp.backtest({"BTC": up, "ETH": up})
+        self.assertGreater(r["total_pct"], 0)
+        self.assertEqual(r["liquidations"], 0)
+        self.assertGreater(pp.backtest({"BTC": up, "ETH": up}, fee_pct=0.5)["fees"], r["fees"])
+        d = Path(tempfile.mkdtemp())
+        state = {"cash": 990.0, "positions": {"BTC": {"contracts": -2, "entry": 50000.0}}, "prices": {"BTC": 49000.0},
+                 "fees": 1.0, "fees_stress": 2.0, "funding": -0.5, "equity": [[1793869200, 1010.0]],
+                 "last_run": 1793869200}
+        (d / "perps_perps.json").write_text(json.dumps(state))
+        b = dashboard.collect(d, now=1793872800)["books"][0]
+        self.assertEqual(b["kind"], "perps")
+        self.assertAlmostEqual(b["unrealized"], 20.0)       # short 0.02 BTC, down $1,000
+        self.assertAlmostEqual(b["equity"], 1010.0)
+        self.assertAlmostEqual(b["stress_equity"], 1009.0)
+        self.assertAlmostEqual(b["leverage"], 980 / 1010)
+        self.assertFalse(due(d, now=1793869200 + 20 * 60)["rotate"])  # perps state counts as a run
+
+
 class LiveGateTests(unittest.TestCase):
     def setUp(self):
         self.cfg = load_config()

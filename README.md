@@ -83,6 +83,28 @@ no marks yet. Add `--runs file.json` (the GitHub runs API response) to include t
 window every 90 days) and reports median and worst return, how often it was positive, how often it beat
 buy-and-hold, and kill-switch trips. Use it before trusting any single backtest.
 
+## Perps paper book
+
+`cbagent rotate` also runs a third book, `perps`, on Coinbase's USD-margined nano perps (`BIP-20DEC30-CDE` for BTC,
+`ETP-20DEC30-CDE` for ETH). It is simulated money only: there is no live perps broker, and building one is a
+separate decision.
+
+- Once a day it goes long when the daily close is above both its 50- and 200-day averages, short when below both,
+  flat otherwise. Each position is sized to about 50% annual volatility, at most 2x leverage in total, in whole
+  contracts (0.01 BTC, 0.1 ETH).
+- Every hour it charges funding, estimated from the perp's premium over spot because the public API doesn't publish
+  the rate. It checks liquidation against the worst hourly price since the last run, with 5% maintenance margin.
+- Fees are 0.02% plus $0.11 per contract, Coinbase's introductory fee in Canada. The dashboard also shows equity
+  as if fees were 0.05%.
+- It stops for good at 40% below its peak, and doesn't rebalance while `data/KILL_SWITCH` exists.
+
+`cbagent perps-backtest --years 4` replays the same rules over daily spot closes. Perps are assumed to track spot,
+longs pay a flat funding rate (10% a year by default) and shorts receive it, and liquidation is checked on daily
+closes only. Treat it as optimistic.
+
+Access: Coinbase opened perps to eligible Canadians in September 2026 through Coinbase Financial Markets. Reports
+put eligibility at investors with at least $5M in net financial assets; check the Futures tab in the app.
+
 ## Live trading
 
 Step-by-step for the $100 test: [docs/GOING_LIVE.md](docs/GOING_LIVE.md). `cbagent live-check` is a read-only check
