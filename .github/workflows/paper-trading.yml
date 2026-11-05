@@ -1,19 +1,18 @@
-# Runs the paper rotation books every hour and the daily brief each morning, in GitHub's cloud.
+# Runs the paper books every 15 minutes and the daily brief each morning, in GitHub's cloud.
 # Simulated money only: no API keys or secrets are used. State is committed back to the repo's `paper-state` branch.
 name: paper-trading
 
 on:
   schedule:
-    # GitHub skips scheduled runs when it is busy, so there are three a hour. The "Decide" step runs the books only
-    # when they haven't run in the last 45 minutes, so they still run about once an hour. The brief runs on the
-    # first run from 15:00 UTC (7 am Vancouver) each day.
-    - cron: "7 * * * *"
-    - cron: "27 * * * *"
-    - cron: "47 * * * *"
+    # GitHub skips and delays scheduled runs when it is busy, so the workflow fires every 5 minutes. The "Decide" step
+    # runs the books only when they haven't run in the last 12 minutes, so they run about every 15 minutes. Each book
+    # still rebalances on its own clock (fast every 4 h, daily and perps once a day); the extra runs mark prices and,
+    # for perps, charge funding and check liquidation. The brief runs on the first run from 15:00 UTC (7 am Vancouver).
+    - cron: "*/5 * * * *"
   workflow_dispatch:
     inputs:
       force:
-        description: "Run the books even if they ran less than 45 minutes ago"
+        description: "Run the books even if they ran less than 12 minutes ago"
         type: boolean
         default: false
       brief:
@@ -68,8 +67,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/paper-trading.yml/runs?per_page=100" \
-            > "$RUNNER_TEMP/workflow_runs.json" || echo '{}' > "$RUNNER_TEMP/workflow_runs.json"
+          # The cron fires every 5 minutes, so 48 hours is about 580 runs: fetch six pages of 100.
+          for page in 1 2 3 4 5 6; do
+            gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/paper-trading.yml/runs?per_page=100&page=$page" \
+              > "$RUNNER_TEMP/runs_$page.json" || echo '{}' > "$RUNNER_TEMP/runs_$page.json"
+          done
+          python -c 'import json, sys; print(json.dumps({"workflow_runs": [r for f in sys.argv[1:] for r in json.load(open(f)).get("workflow_runs", [])]}))' \
+            "$RUNNER_TEMP"/runs_*.json > "$RUNNER_TEMP/workflow_runs.json"
 
       - name: Build dashboard
         if: ${{ !cancelled() && (steps.due.outputs.rotate == 'true' || steps.due.outputs.brief == 'true') }}

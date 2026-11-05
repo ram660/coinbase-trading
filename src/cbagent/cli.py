@@ -371,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
     pb.set_defaults(fn=cmd_perps_backtest)
 
     du = sub.add_parser("due", help="whether the books and the brief are due this hour (for the workflow)")
-    du.add_argument("--min-gap", type=int, default=45, help="minutes since the last run before the books run again")
+    du.add_argument("--min-gap", type=int, default=12, help="minutes since the last run before the books run again")
     du.add_argument("--force", action="store_true", help="say the books are due regardless")
     du.add_argument("--brief", action="store_true", help="say the brief is due regardless")
     du.set_defaults(fn=cmd_due)
