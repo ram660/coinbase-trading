@@ -1,0 +1,8 @@
+{"ts": "2026-11-05T05:32:39.861969+00:00", "book": "daily", "event": "fill", "product": "ELSA-USDC", "side": "BUY", "qty": 3183.835153751079, "price": 0.10417206, "fee": 1.6666666666666665}
+{"ts": "2026-11-05T05:32:39.862078+00:00", "book": "daily", "event": "fill", "product": "CLANKER-USDC", "side": "BUY", "qty": 18.234373828853816, "price": 18.18909, "fee": 1.6666666666666665}
+{"ts": "2026-11-05T05:32:39.862123+00:00", "book": "daily", "event": "fill", "product": "ALEO-USDC", "side": "BUY", "qty": 9002.306001753268, "price": 0.036842412, "fee": 1.6666666666666665}
+{"ts": "2026-11-05T05:32:39.862161+00:00", "book": "daily", "event": "rebalance", "note": "picks: ELSA-USDC (1.33), CLANKER-USDC (0.57), ALEO-USDC (0.54)", "equity": 994.5027486256871}
+{"ts": "2026-11-05T05:32:49.099751+00:00", "book": "fast", "event": "fill", "product": "CAP-USDC", "side": "BUY", "qty": 3348.4941031167914, "price": 0.0990495, "fee": 1.6666666666666665}
+{"ts": "2026-11-05T05:32:49.099839+00:00", "book": "fast", "event": "fill", "product": "INJ-USDC", "side": "BUY", "qty": 41.200710441034346, "price": 8.050023, "fee": 1.6666666666666665}
+{"ts": "2026-11-05T05:32:49.099883+00:00", "book": "fast", "event": "fill", "product": "DRV-USDC", "side": "BUY", "qty": 887.1488645290292, "price": 0.373856835, "fee": 1.6666666666666665}
+{"ts": "2026-11-05T05:32:49.099926+00:00", "book": "fast", "event": "rebalance", "note": "picks: CAP-USDC (1.79), INJ-USDC (1.70), DRV-USDC (1.65)", "equity": 994.5027486256871}
