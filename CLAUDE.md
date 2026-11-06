@@ -4,7 +4,7 @@ Ram's personal crypto research and paper-trading agent. Python 3.11 package `cba
 
 ## Commands
 - `PYTHONPATH=src python -m unittest discover -s tests` must pass before work is called done
-- `PYTHONPATH=src python -m cbagent <scan|portfolio|news|brief|lab|robustness|backtest|perps-backtest|rotate|paper|status|kill|unkill|live-check|setups|entry|plan|odds|ticket|alerts>`
+- `PYTHONPATH=src python -m cbagent <scan|portfolio|news|brief|lab|robustness|backtest|perps-backtest|stocks-backtest|rotate|paper|status|kill|unkill|live-check|setups|entry|plan|odds|ticket|alerts>`
 
 ## Hard rules
 1. Never place, preview, edit or cancel real orders, convert, transfer or stake, by code, CLI or connector, without

@@ -131,6 +131,10 @@ def cmd_brief(cfg: Config, args) -> int:
         perps = PaperPerps(cfg.data_dir)
         if perps.path.exists():
             out += [perps.book.description, perps.status(), ""]
+        from .stocks_paper import PaperStocks
+        stocks = PaperStocks(cfg.data_dir)
+        if stocks.path.exists():
+            out += [stocks.book.description, stocks.status(), ""]
         return "\n".join(out).strip() or "No paper books running."
 
     section("Paper trading books (simulated money)", books)
@@ -161,13 +165,19 @@ def cmd_lab(cfg: Config, args) -> int:
 
 
 def cmd_rotate(cfg: Config, args) -> int:
-    """Paper books: the spot momentum rotations and the perps trend book. Simulated money only."""
+    """Paper books: the spot momentum rotations, the perps trend book and the stock book. Simulated money only."""
     from .perps_paper import PaperPerps
     from .rotation_paper import BOOKS, PaperRotation
+    from .stocks_paper import PaperStocks
 
-    names = [*BOOKS, "perps"] if args.book == "all" else [args.book]
+    names = [*BOOKS, "perps", "stocks"] if args.book == "all" else [args.book]
     for name in names:
-        book = PaperPerps(cfg.data_dir) if name == "perps" else PaperRotation(BOOKS[name], cfg.data_dir)
+        if name == "perps":
+            book = PaperPerps(cfg.data_dir)
+        elif name == "stocks":
+            book = PaperStocks(cfg.data_dir)
+        else:
+            book = PaperRotation(BOOKS[name], cfg.data_dir)
         try:
             print(book.status() if args.status else book.run(force=args.force))
         except Exception as e:  # one book failing shouldn't stop the other
@@ -184,6 +194,15 @@ def cmd_perps_backtest(cfg: Config, args) -> int:
     days = args.years * 365 + perps_paper.BOOK.slow + 10
     print(f"Loading {days} days of daily closes for {', '.join(perps_paper.BOOK.assets)} ...")
     print(perps_paper.backtest_report(perps_paper.load_daily(days), funding_apr_pct=args.funding))
+    return 0
+
+
+def cmd_stocks_backtest(cfg: Config, args) -> int:
+    """Replay the stock book over years of daily closes, next to SPY bought and held. Read-only, public data."""
+    from . import stocks_paper
+
+    print(f"Loading {args.years} years of daily closes for {len(stocks_paper.UNIVERSE)} symbols ...")
+    print(stocks_paper.backtest_report(stocks_paper.load_history(years=args.years)))
     return 0
 
 
@@ -491,8 +510,8 @@ def main(argv: list[str] | None = None) -> int:
     lb.add_argument("--years", type=int, default=4)
     lb.set_defaults(fn=cmd_lab)
 
-    ro = sub.add_parser("rotate", help="run the paper books: spot rotations and perps trend (simulated money)")
-    ro.add_argument("--book", default="all", choices=["all", "daily", "fast", "perps"])
+    ro = sub.add_parser("rotate", help="run the paper books: spot rotations, perps trend, stocks (simulated money)")
+    ro.add_argument("--book", default="all", choices=["all", "daily", "fast", "perps", "stocks"])
     ro.add_argument("--status", action="store_true", help="show equity and holdings without trading")
     ro.add_argument("--force", action="store_true", help="rebalance now even if not due")
     ro.set_defaults(fn=cmd_rotate)
@@ -501,6 +520,10 @@ def main(argv: list[str] | None = None) -> int:
     pb.add_argument("--years", type=int, default=4)
     pb.add_argument("--funding", type=float, default=10.0, help="funding longs pay a year, in percent")
     pb.set_defaults(fn=cmd_perps_backtest)
+
+    sb = sub.add_parser("stocks-backtest", help="replay the stock book over daily history vs SPY (read-only)")
+    sb.add_argument("--years", type=int, default=10)
+    sb.set_defaults(fn=cmd_stocks_backtest)
 
     du = sub.add_parser("due", help="whether the books and the brief are due this hour (for the workflow)")
     du.add_argument("--min-gap", type=int, default=12, help="minutes since the last run before the books run again")
