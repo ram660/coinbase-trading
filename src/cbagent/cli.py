@@ -131,6 +131,10 @@ def cmd_brief(cfg: Config, args) -> int:
         perps = PaperPerps(cfg.data_dir)
         if perps.path.exists():
             out += [perps.book.description, perps.status(), ""]
+        from .stocks_paper import PaperStocks
+        stocks = PaperStocks(cfg.data_dir)
+        if stocks.path.exists():
+            out += [stocks.book.description, stocks.status(), ""]
         return "\n".join(out).strip() or "No paper books running."
 
     section("Paper trading books (simulated money)", books)
@@ -161,13 +165,19 @@ def cmd_lab(cfg: Config, args) -> int:
 
 
 def cmd_rotate(cfg: Config, args) -> int:
-    """Paper books: the spot momentum rotations and the perps trend book. Simulated money only."""
+    """Paper books: the spot momentum rotations, the perps trend book and the stock book. Simulated money only."""
     from .perps_paper import PaperPerps
     from .rotation_paper import BOOKS, PaperRotation
+    from .stocks_paper import PaperStocks
 
-    names = [*BOOKS, "perps"] if args.book == "all" else [args.book]
+    names = [*BOOKS, "perps", "stocks"] if args.book == "all" else [args.book]
     for name in names:
-        book = PaperPerps(cfg.data_dir) if name == "perps" else PaperRotation(BOOKS[name], cfg.data_dir)
+        if name == "perps":
+            book = PaperPerps(cfg.data_dir)
+        elif name == "stocks":
+            book = PaperStocks(cfg.data_dir)
+        else:
+            book = PaperRotation(BOOKS[name], cfg.data_dir)
         try:
             print(book.status() if args.status else book.run(force=args.force))
         except Exception as e:  # one book failing shouldn't stop the other
@@ -184,6 +194,15 @@ def cmd_perps_backtest(cfg: Config, args) -> int:
     days = args.years * 365 + perps_paper.BOOK.slow + 10
     print(f"Loading {days} days of daily closes for {', '.join(perps_paper.BOOK.assets)} ...")
     print(perps_paper.backtest_report(perps_paper.load_daily(days), funding_apr_pct=args.funding))
+    return 0
+
+
+def cmd_stocks_backtest(cfg: Config, args) -> int:
+    """Replay the stock book over years of daily closes, next to SPY bought and held. Read-only, public data."""
+    from . import stocks_paper
+
+    print(f"Loading {args.years} years of daily closes for {len(stocks_paper.UNIVERSE)} symbols ...")
+    print(stocks_paper.backtest_report(stocks_paper.load_history(years=args.years)))
     return 0
 
 
@@ -380,6 +399,18 @@ def cmd_live(cfg: Config, args) -> int:
     return _live_loop(cfg, engine, args.once)
 
 
+def cmd_trend_bot(cfg: Config, args) -> int:
+    from . import trend_bot
+    from .brokers.coinbase_live import LiveTradingNotAllowed
+
+    try:
+        bot = trend_bot.build(cfg, args.live)
+    except (LiveTradingNotAllowed, ValueError) as e:
+        print(f"Trend bot refused: {e}")
+        return 1
+    return bot.run(args.once)
+
+
 def cmd_live_check(cfg: Config, args) -> int:
     """Read-only: checks the key, balances and products, and says what the strategy would do now. Places nothing."""
     from .brokers.coinbase_live import LiveTradingNotAllowed, key_permissions, make_client
@@ -491,8 +522,8 @@ def main(argv: list[str] | None = None) -> int:
     lb.add_argument("--years", type=int, default=4)
     lb.set_defaults(fn=cmd_lab)
 
-    ro = sub.add_parser("rotate", help="run the paper books: spot rotations and perps trend (simulated money)")
-    ro.add_argument("--book", default="all", choices=["all", "daily", "fast", "perps"])
+    ro = sub.add_parser("rotate", help="run the paper books: spot rotations, perps trend, stocks (simulated money)")
+    ro.add_argument("--book", default="all", choices=["all", "daily", "fast", "perps", "stocks"])
     ro.add_argument("--status", action="store_true", help="show equity and holdings without trading")
     ro.add_argument("--force", action="store_true", help="rebalance now even if not due")
     ro.set_defaults(fn=cmd_rotate)
@@ -501,6 +532,10 @@ def main(argv: list[str] | None = None) -> int:
     pb.add_argument("--years", type=int, default=4)
     pb.add_argument("--funding", type=float, default=10.0, help="funding longs pay a year, in percent")
     pb.set_defaults(fn=cmd_perps_backtest)
+
+    sb = sub.add_parser("stocks-backtest", help="replay the stock book over daily history vs SPY (read-only)")
+    sb.add_argument("--years", type=int, default=10)
+    sb.set_defaults(fn=cmd_stocks_backtest)
 
     du = sub.add_parser("due", help="whether the books and the brief are due this hour (for the workflow)")
     du.add_argument("--min-gap", type=int, default=12, help="minutes since the last run before the books run again")
@@ -581,6 +616,11 @@ def main(argv: list[str] | None = None) -> int:
     lv.add_argument("--live", action="store_true", help="required to confirm real orders")
     lv.add_argument("--once", action="store_true")
     lv.set_defaults(fn=cmd_live)
+
+    tb = sub.add_parser("trend-bot", help="Ram's 2 x $30 trend plan with +/-$3 brackets on a loop; dry run unless --live")
+    tb.add_argument("--live", action="store_true", help="send REAL orders (also needs mode=live and CBAGENT_LIVE_CONFIRM)")
+    tb.add_argument("--once", action="store_true", help="run one check and exit")
+    tb.set_defaults(fn=cmd_trend_bot)
 
     sub.add_parser("live-check", help="read-only check of the API key, balances and products").set_defaults(fn=cmd_live_check)
     sub.add_parser("status", help="show mode, kill switch and paper holdings").set_defaults(fn=cmd_status)

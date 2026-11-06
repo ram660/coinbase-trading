@@ -43,7 +43,8 @@ def _journal(data_dir: Path) -> list[dict]:
 
 
 def _book(name: str, state: dict, journal: list[dict], fallback_prices: Callable[[list[str]], dict] | None) -> dict:
-    book = BOOKS.get(name)
+    from .stocks_paper import BOOK as STOCK_BOOK
+    book = BOOKS.get(name) or (STOCK_BOOK if name == STOCK_BOOK.name else None)
     start = book.starting_cash if book else 1000.0
     lots: dict[str, list[float]] = {}  # product -> [qty, cost incl. fees]
     realized = 0.0
@@ -250,7 +251,7 @@ def collect(data_dir: Path, runs_raw: dict | list | None = None, repo: str = "",
         books.append(_book(name, json.loads(path.read_text(encoding="utf-8")), journal, fallback_prices))
     for path in sorted(data_dir.glob("perps_*.json")):
         books.append(_perp_book(path.stem.removeprefix("perps_"), json.loads(path.read_text(encoding="utf-8"))))
-    order = {"fast": 0, "daily": 1, "perps": 2}
+    order = {"fast": 0, "daily": 1, "perps": 2, "stocks": 3}
     books.sort(key=lambda b: (order.get(b["name"], 9), b["name"]))
 
     fills = [{"t": r["t"], "book": r["book"], "side": r["side"], "product": r["product"], "qty": r["qty"],
@@ -322,7 +323,7 @@ _TEMPLATE = r"""<!doctype html>
   color-scheme: light;
   --bg: #f4f4f2; --surface: #fcfcfb; --border: #e3e2de; --grid: #ecebe8;
   --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
-  --s1: #2a78d6; --s2: #eb6834; --s3: #1a9a6c;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1a9a6c; --s4: #8a4fd6;
   --good: #0ca30c; --warning: #b77f00; --critical: #d03b3b; --neutral: #b9b8b2; --before: #ecebe8;
   --pos: #0b7a0b; --neg: #c02f2f;
 }
@@ -331,7 +332,7 @@ _TEMPLATE = r"""<!doctype html>
     color-scheme: dark;
     --bg: #111110; --surface: #1a1a19; --border: #2c2c2a; --grid: #262624;
     --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86;
-    --s1: #3987e5; --s2: #d95926; --s3: #2fb383;
+    --s1: #3987e5; --s2: #d95926; --s3: #2fb383; --s4: #a57ef0;
     --good: #0ca30c; --warning: #fab219; --critical: #e66767; --neutral: #4a4a46; --before: #222220;
     --pos: #3cc43c; --neg: #ef7b7b;
   }
@@ -340,7 +341,7 @@ _TEMPLATE = r"""<!doctype html>
   color-scheme: dark;
   --bg: #111110; --surface: #1a1a19; --border: #2c2c2a; --grid: #262624;
   --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86;
-  --s1: #3987e5; --s2: #d95926; --s3: #2fb383;
+  --s1: #3987e5; --s2: #d95926; --s3: #2fb383; --s4: #a57ef0;
   --good: #0ca30c; --warning: #fab219; --critical: #e66767; --neutral: #4a4a46; --before: #222220;
   --pos: #3cc43c; --neg: #ef7b7b;
 }
@@ -432,7 +433,7 @@ a { color: var(--s1); }
 </main>
 <script>
 const D = __DATA__;
-const COLORS = {fast: "var(--s1)", daily: "var(--s2)", perps: "var(--s3)"};
+const COLORS = {fast: "var(--s1)", daily: "var(--s2)", perps: "var(--s3)", stocks: "var(--s4)"};
 const color = n => COLORS[n] || "var(--muted)";
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));

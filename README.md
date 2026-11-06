@@ -107,6 +107,42 @@ closes only. Treat it as optimistic.
 Access: Coinbase opened perps to eligible Canadians in September 2026 through Coinbase Financial Markets. Reports
 put eligibility at investors with at least $5M in net financial assets; check the Futures tab in the app.
 
+## Stock paper book
+
+`cbagent rotate` also runs a fourth book, `stocks`, on stocks and ETFs that Coinbase lists as `<SYMBOL>-USDC`
+(27 liquid names in `stocks_paper.UNIVERSE`, checked against Coinbase's product list on 2026-11-06). Simulated money
+only: nothing here can place a stock order.
+
+- Rule: the same trend test as the crypto trading. A stock qualifies while its live price is above both its 50- and
+  200-day averages of closed daily closes. The book holds up to 5 qualifiers in equal parts; a holding keeps its
+  place while it still qualifies, and empty places go to the qualifiers with the highest 20-day dollar volume.
+- While SPY is below its own 200-day average the book holds cash, like the BTC filter on the daily crypto book.
+- It trades only in the US regular session; other runs just mark it. Holdings are topped back up to equal weight only
+  when they drift 10% of equity away.
+- Prices come from Yahoo Finance's public chart endpoint, because Coinbase's public market API doesn't serve its
+  stock pairs. No key is needed, so the workflow still runs without secrets.
+- Fees are assumed at 0.1% plus 0.05% slippage a trade until Coinbase's stock fee is confirmed.
+- The status line and the brief show SPY bought and held since the book started, the bar it has to beat.
+
+`cbagent stocks-backtest --years 10` replays the rule on daily closes (decide at one close, trade at the next) next to
+SPY and a few variants. The 2017-08 to 2026-11 run:
+
+| variant | CAGR | max drawdown | Sharpe | trades | fees | end value |
+|---|---|---|---|---|---|---|
+| SPY bought and held | 14.5% | 33.7% | 0.82 | 1 | $0 | $3,465 |
+| top 5 + SPY filter (the book) | 22.1% | 31.5% | 1.05 | 860 | $632 | $6,257 |
+| top 5, no SPY filter | 20.6% | 35.4% | 0.94 | 925 | $767 | $5,603 |
+| top 5, re-ranked daily | 13.4% | 32.7% | 0.69 | 2333 | $1386 | $3,190 |
+| top 3 | 20.2% | 34.1% | 0.91 | 512 | $599 | $5,437 |
+| top 10 | 15.6% | 26.5% | 0.92 | 1842 | $503 | $3,798 |
+| without NVDA, TSLA, AVGO | 12.0% | 30.4% | 0.73 | 865 | $358 | $2,840 |
+
+Caveat: the universe is today's list of large, liquid names, so the past looks better than it was (survivorship bias). Treat a small edge over SPY as no edge.
+
+Most of the edge over SPY comes from NVDA, TSLA and AVGO, names picked with hindsight; without them the book trails
+SPY. Split in halves, the book beat SPY in both (28.9% vs 18.7% a year in 2017-21, 16.8% vs 11.6% in 2021-26);
+without the SPY filter it only tied SPY in 2021-26. Read it as "not yet proven", which is what the paper book is for.
+
 ## Intraday tools
 
 A crypto version of the ideas in the day-trader skill pack (github.com/Jakeschincariol/day-trader-skill), written

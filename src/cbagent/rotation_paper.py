@@ -129,7 +129,7 @@ class PaperRotation:
     def run(self, now: float | None = None, force: bool = False) -> str:
         now = now or time.time()
         due = force or now - self.state["last_rebalance"] >= self.book.rebalance_hours * 3600 - 300
-        prices, target, note = pick(self.book) if due else (self._prices(), None, "not due")
+        prices, target, note = self._pick() if due else (self._prices(), None, "not due")
         equity = self.equity(prices)
         lines = []
         if target is not None:
@@ -151,6 +151,10 @@ class PaperRotation:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(self.state, indent=1), encoding="utf-8")
         return "\n".join([self.status(prices)] + lines)
+
+    def _pick(self) -> tuple[dict[str, float], dict[str, float] | None, str]:
+        """Latest prices, target weights (None = don't trade this run) and a note."""
+        return pick(self.book)
 
     def _prices(self) -> dict[str, float]:
         out = {}
