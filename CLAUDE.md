@@ -9,10 +9,11 @@ Ram's personal crypto research and paper-trading agent. Python 3.11 package `cba
 ## Hard rules
 1. Never place, preview, edit or cancel real orders, convert, transfer or stake, by code, CLI or connector, without
    Ram's explicit yes in the thread for that exact action. Never run `cbagent live` yourself.
-   Standing approval (Ram, 2026-11-05): the hourly real-order check may place, without asking, one spot market BUY at a
-   time, picked by the rule in 4, in the Default portfolio, paid from USDC only, at most $75 USDC, with an attached
-   take-profit and stop about $5 from entry, only while no live position is open. It tells Ram after each order. It never
-   sells or touches his other holdings, never trades futures, converts, transfers or stakes; anything else needs a yes.
+   Standing approval (Ram, 2026-11-05; changed 2026-11-06): the hourly real-order check may place, without asking, spot
+   market BUYs picked by the rule in 4, in the Default portfolio, paid from USDC only, at most $30 USDC each, at most two
+   open live positions at once and never two in the same coin, each with an attached take-profit and stop about $3 from
+   entry, and never in a coin sold in the last 24 hours. It tells Ram after each order. It never sells or touches his
+   other holdings, never trades futures, converts, transfers or stakes; anything else needs a yes.
 2. Never read, print or commit `config/.env` or `config/local.toml` (Ram's holdings). `data/` is git-ignored.
 3. Paper mode is the default. Live trading stays behind its three gates and refuses keys that can transfer funds.
 4. Research output describes; it doesn't give personalized buy/sell advice. Exception (Ram, 2026-11-05): for Ram's own
