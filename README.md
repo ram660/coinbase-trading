@@ -131,6 +131,10 @@ cbagent alerts add --from-plan                  # stop and target alerts; `cbage
   same time of day, and tests the same % distances from every past close in the lookback (30 days by default).
   It reports target first / stop first / still open and the average result in R after fees. If one candle touches
   both levels it counts as a stop. It replays the recent past; it doesn't forecast.
+- **Quiet mode** for schedules: `cbagent setups --quiet` prints the full report on the first run of the UTC day,
+  then only hits (coin, setup, side) not yet reported today, and nothing otherwise. `cbagent alerts check --quiet`
+  prints only what rang, so a price that can't be fetched shows once a day instead of every run. The state is
+  `data/daytrade/seen_today.json`.
 - **Ticket**: shows whether the order fits Ram's standing approval (one spot BUY in USDC, at most $75, with TP and
   stop, no live position open) or needs his yes. These notes inform; they don't block. Sending the order stays a
   separate step under CLAUDE.md rule 1.

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cbagent.daytrade import alerts, setups
+from cbagent.daytrade import alerts, quiet, setups
 from cbagent.daytrade import plan as tp
 from cbagent.daytrade import timemachine as tm
 from cbagent.models import Candle
@@ -242,6 +242,24 @@ class AlertTests(unittest.TestCase):
             self.assertEqual(len(rang), 2)
             self.assertIn("unavailable", rang[0])
             self.assertFalse(alerts.load(d)[0]["fired"])
+
+
+class QuietTests(unittest.TestCase):
+    def test_first_run_of_the_day_then_only_new_keys(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            self.assertEqual(quiet.gate(d, ["a", "b"], now=DAY0 + 60), (["a", "b"], True))
+            self.assertEqual(quiet.gate(d, ["a", "b"], now=DAY0 + 960), ([], False))
+            self.assertEqual(quiet.gate(d, ["b", "c", "c"], now=DAY0 + 1860), (["c"], False))
+            self.assertEqual(quiet.gate(d, [], now=DAY0 + 2760), ([], False))
+            self.assertEqual(quiet.gate(d, ["a"], now=DAY0 + 86400 + 60), (["a"], True))  # a new UTC day
+
+    def test_setup_keys_ignore_the_trigger_candle(self):
+        a = setups.Hit("X-USDC", "break_24h", "triggered", "long", 101, 100, DAY0, "")
+        b = setups.Hit("X-USDC", "break_24h", "triggered", "long", 103, 102, DAY0 + 3600, "")
+        c = setups.Hit("X-USDC", "break_24h", "triggered", "short", 97, 98, DAY0 + 7200, "")
+        self.assertEqual(setups.key(a), setups.key(b))
+        self.assertNotEqual(setups.key(a), setups.key(c))
 
 
 if __name__ == "__main__":

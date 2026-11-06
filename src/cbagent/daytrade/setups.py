@@ -133,6 +133,11 @@ def check(product_id: str, candles: list[Candle], setup: str, fresh: int = 2, ra
     raise ValueError(f"unknown setup {setup}; choose from {', '.join(SETUPS)}")
 
 
+def key(h: Hit) -> str:
+    """Identity of a hit for quiet mode: the same coin, setup and side is reported once a UTC day."""
+    return f"setup|{h.product_id}|{h.setup}|{h.side}"
+
+
 def scan(products: list[str], setups: tuple[str, ...] = SETUPS, workers: int = 6, fresh: int = 2,
          range_minutes: int = 60) -> list[Hit]:
     """Latest day and a bit of 5-minute candles for each product; every setup that is triggered now."""

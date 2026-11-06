@@ -215,8 +215,17 @@ def cmd_setups(cfg: Config, args) -> int:
 
     products = args.product or [p["product_id"] for p in scanner.list_products(args.quote, args.min_volume)]
     wanted = tuple(args.setup) if args.setup else setups.SETUPS
-    print(f"Checking {len(products)} {args.quote} pairs for {', '.join(wanted)} on 5-minute candles ...")
+    if not args.quiet:
+        print(f"Checking {len(products)} {args.quote} pairs for {', '.join(wanted)} on 5-minute candles ...")
     hits = setups.scan(products, wanted, fresh=args.fresh, range_minutes=args.range_minutes)
+    if args.quiet:
+        from .daytrade import quiet
+
+        new, first = quiet.gate(cfg.data_dir, [setups.key(h) for h in hits])
+        if not first:
+            hits = [h for h in hits if setups.key(h) in new]
+            if not hits:
+                return 0  # nothing new since the last report today: stay silent
     print(setups.report(hits, len(products)))
     return 0
 
@@ -316,7 +325,13 @@ def cmd_alerts(cfg: Config, args) -> int:
         print(f"Added [{a['id']}] {a['product_id']} {a['direction']} {a['price']:g}")
     elif args.action == "check":
         rang = alerts.check(cfg.data_dir)
-        print("\n".join(rang) if rang else "Nothing rang.")
+        if args.quiet:
+            from .daytrade import quiet
+
+            new, _ = quiet.gate(cfg.data_dir, ["alert|" + line for line in rang])
+            rang = [k.removeprefix("alert|") for k in new]  # an unavailable price is reported once a day, not every run
+        if rang or not args.quiet:
+            print("\n".join(rang) if rang else "Nothing rang.")
     elif args.action == "clear":
         print(f"Removed {alerts.remove(cfg.data_dir, args.id or None)} alerts.")
     else:
@@ -516,6 +531,8 @@ def main(argv: list[str] | None = None) -> int:
     st.add_argument("--setup", action="append", choices=["range_break", "break_24h", "volume_spike", "rsi_bounce", "rsi_fade"])
     st.add_argument("--fresh", type=int, default=2, help="how many latest candles count as now")
     st.add_argument("--range-minutes", type=int, default=60, help="UTC-day opening range length")
+    st.add_argument("--quiet", action="store_true",
+                    help="for schedules: full report on the first run of the UTC day, then only new hits, else silent")
     st.set_defaults(fn=cmd_setups)
 
     en = sub.add_parser("entry", help="is a setup waiting, triggered or expired on one coin (read-only)")
@@ -552,6 +569,7 @@ def main(argv: list[str] | None = None) -> int:
     al.add_argument("price", nargs="?", type=float)
     al.add_argument("--note")
     al.add_argument("--from-plan", action="store_true", help="add the plan's stop and target")
+    al.add_argument("--quiet", action="store_true", help="with check: print only what rang, each line once a UTC day")
     al.add_argument("--id", type=int, action="append", help="with clear: remove these (default: the ones that rang)")
     al.set_defaults(fn=cmd_alerts)
 
