@@ -59,6 +59,18 @@ kill_switch_file = "KILL_SWITCH"  # if this file exists in data_dir, nothing tra
 # Coins you hold, marked in `cbagent scan`. Read-only; the bot never trades these.
 holdings = ["HBAR", "QNT", "LCX", "RENDER", "ARB"]
 
+[trend_bot]
+# `cbagent trend-bot`: live price vs 50/200-day averages of closed daily candles, long above both, top 24h-volume
+# USDC coin first. Buys only, each with a take-profit and stop bracket_usd from entry held on Coinbase.
+per_order_usdc = 30      # capped by risk.max_order_quote
+min_order_usdc = 25      # skip a slot if less USDC than this is free
+reserve_usdc = 0.50
+max_positions = 2        # never two in one coin
+bracket_usd = 3
+top_n = 50
+every_minutes = 15
+skip = ["ELSA-USDC", "CLANKER-USDC", "ALEO-USDC"]  # rejected as "not supported on this domain"
+
 [paper]
 starting_cash = 1000
 fee_pct = 0.5        # Coinbase Advanced taker fee on the Intro tier (Nov 2026)

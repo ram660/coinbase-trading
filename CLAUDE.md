@@ -4,11 +4,11 @@ Ram's personal crypto research and paper-trading agent. Python 3.11 package `cba
 
 ## Commands
 - `PYTHONPATH=src python -m unittest discover -s tests` must pass before work is called done
-- `PYTHONPATH=src python -m cbagent <scan|portfolio|news|brief|lab|robustness|backtest|perps-backtest|stocks-backtest|rotate|paper|status|kill|unkill|live-check|setups|entry|plan|odds|ticket|alerts>`
+- `PYTHONPATH=src python -m cbagent <scan|portfolio|news|brief|lab|robustness|backtest|perps-backtest|stocks-backtest|rotate|paper|status|kill|unkill|live-check|trend-bot|setups|entry|plan|odds|ticket|alerts>`
 
 ## Hard rules
 1. Never place, preview, edit or cancel real orders, convert, transfer or stake, by code, CLI or connector, without
-   Ram's explicit yes in the thread for that exact action. Never run `cbagent live` yourself.
+   Ram's explicit yes in the thread for that exact action. Never run `cbagent live` or `cbagent trend-bot --live` yourself.
    Standing approval (Ram, 2026-11-05; changed 2026-11-06): the hourly real-order check may place, without asking, spot
    market BUYs picked by the rule in 4, in the Default portfolio, paid from USDC only, at most $30 USDC each, at most two
    open live positions at once and never two in the same coin, each with an attached take-profit and stop about $3 from

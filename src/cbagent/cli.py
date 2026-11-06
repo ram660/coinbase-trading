@@ -399,6 +399,18 @@ def cmd_live(cfg: Config, args) -> int:
     return _live_loop(cfg, engine, args.once)
 
 
+def cmd_trend_bot(cfg: Config, args) -> int:
+    from . import trend_bot
+    from .brokers.coinbase_live import LiveTradingNotAllowed
+
+    try:
+        bot = trend_bot.build(cfg, args.live)
+    except (LiveTradingNotAllowed, ValueError) as e:
+        print(f"Trend bot refused: {e}")
+        return 1
+    return bot.run(args.once)
+
+
 def cmd_live_check(cfg: Config, args) -> int:
     """Read-only: checks the key, balances and products, and says what the strategy would do now. Places nothing."""
     from .brokers.coinbase_live import LiveTradingNotAllowed, key_permissions, make_client
@@ -604,6 +616,11 @@ def main(argv: list[str] | None = None) -> int:
     lv.add_argument("--live", action="store_true", help="required to confirm real orders")
     lv.add_argument("--once", action="store_true")
     lv.set_defaults(fn=cmd_live)
+
+    tb = sub.add_parser("trend-bot", help="Ram's 2 x $30 trend plan with +/-$3 brackets on a loop; dry run unless --live")
+    tb.add_argument("--live", action="store_true", help="send REAL orders (also needs mode=live and CBAGENT_LIVE_CONFIRM)")
+    tb.add_argument("--once", action="store_true", help="run one check and exit")
+    tb.set_defaults(fn=cmd_trend_bot)
 
     sub.add_parser("live-check", help="read-only check of the API key, balances and products").set_defaults(fn=cmd_live_check)
     sub.add_parser("status", help="show mode, kill switch and paper holdings").set_defaults(fn=cmd_status)

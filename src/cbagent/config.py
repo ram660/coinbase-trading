@@ -47,6 +47,7 @@ class Config:
     env: dict[str, str] = field(repr=False, default_factory=dict)
     live: dict = field(default_factory=dict)
     portfolio: dict = field(default_factory=dict)
+    trend_bot: dict = field(default_factory=dict)
 
     @property
     def kill_switch_path(self) -> Path:
@@ -123,4 +124,5 @@ def load_config(config_dir: Path = CONFIG_DIR) -> Config:
         env=_read_env(config_dir / ".env"),
         live=dict(raw.get("live", {})),
         portfolio=dict(raw.get("portfolio", {})),
+        trend_bot=dict(raw.get("trend_bot", {})),
     )
