@@ -223,3 +223,8 @@
 {"ts": "2026-11-06T05:15:40.733714+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ALEO-USDC'"}
 {"ts": "2026-11-06T05:15:49.566965+00:00", "book": "fast", "event": "rebalance", "note": "BTC below its 200-bar average: holding cash", "equity": 969.3689564249412}
 {"ts": "2026-11-06T05:15:50.113119+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH flat", "equity": 1000.0}
+{"ts": "2026-11-06T05:31:00.094105+00:00", "book": "daily", "event": "fill", "product": "ELSA-USDC", "side": "SELL", "qty": 735.3107479626611, "price": 0.082548705, "fee": 0.30349475008449533}
+{"ts": "2026-11-06T05:31:00.094239+00:00", "book": "daily", "event": "fill", "product": "CLANKER-USDC", "side": "SELL", "qty": 7.506329761264141, "price": 18.840575, "fee": 0.7071178442091457}
+{"ts": "2026-11-06T05:31:00.094319+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ALEO-USDC'"}
+{"ts": "2026-11-06T05:31:07.078706+00:00", "book": "fast", "event": "rebalance", "note": "BTC below its 200-bar average: holding cash", "equity": 969.3689564249412}
+{"ts": "2026-11-06T05:31:07.528312+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH flat", "equity": 1000.0}
