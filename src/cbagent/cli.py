@@ -1,4 +1,4 @@
-"""Command line: backtest, paper, live, status, kill, unkill."""
+"""Command line: research, paper books, intraday tools (setups, entry, plan, odds, ticket, alerts), live gates."""
 from __future__ import annotations
 
 import argparse
@@ -207,6 +207,123 @@ def cmd_dashboard(cfg: Config, args) -> int:
     return 0
 
 
+# ---- intraday tools (crypto adaptation of the day-trader skills). Read-only; nothing here places an order.
+
+def cmd_setups(cfg: Config, args) -> int:
+    from . import scanner
+    from .daytrade import setups
+
+    products = args.product or [p["product_id"] for p in scanner.list_products(args.quote, args.min_volume)]
+    wanted = tuple(args.setup) if args.setup else setups.SETUPS
+    print(f"Checking {len(products)} {args.quote} pairs for {', '.join(wanted)} on 5-minute candles ...")
+    hits = setups.scan(products, wanted, fresh=args.fresh, range_minutes=args.range_minutes)
+    print(setups.report(hits, len(products)))
+    return 0
+
+
+def cmd_entry(cfg: Config, args) -> int:
+    from .daytrade import setups
+    from .daytrade.common import bars
+
+    while True:
+        hit = setups.check(args.product, bars(args.product, 1.25), args.setup, args.fresh, args.range_minutes)
+        print(time.strftime("%H:%M:%S UTC ", time.gmtime()) + setups.describe(hit))
+        if not args.watch or hit.status in ("triggered", "expired"):
+            return 0
+        time.sleep(args.every)
+
+
+def _plan_from_args(cfg: Config, args):
+    from .daytrade import plan as tp
+    from .daytrade.common import product_info
+    from .indicators import atr
+
+    info = product_info(args.product)
+    entry = float(args.entry) if args.entry else float(info["price"])
+    needs_atr = any(r.lower().startswith("atr:") for r in (args.stop, args.target))
+    a = atr(fetch_candles(args.product, "ONE_HOUR", 60), 14) if needs_atr else None
+    return tp.make_plan(args.product, args.side, entry, args.stop, args.target, args.budget, args.max_loss,
+                        args.fee, args.hours or 24, a, info.get("price_increment") or info.get("quote_increment"),
+                        info.get("quote_increment"))
+
+
+def cmd_plan(cfg: Config, args) -> int:
+    from .daytrade import plan as tp
+
+    p = _plan_from_args(cfg, args)
+    print(tp.describe(p))
+    print(f"Saved to {tp.save(p, cfg.data_dir)}. Next: `cbagent odds`, then `cbagent ticket`.")
+    return 0
+
+
+def cmd_odds(cfg: Config, args) -> int:
+    from .daytrade import plan as tp
+    from .daytrade import timemachine as tm
+    from .daytrade.common import bars, folder, write_json
+
+    if args.product:
+        p = _plan_from_args(cfg, args)
+    else:
+        p = tp.load(cfg.data_dir)
+        if not p:
+            print("No plan yet: run `cbagent plan PRODUCT ...` or pass a product here.")
+            return 1
+    plan = tm.Plan(p.product_id, p.side, p.entry, p.stop, p.target, start=p.created, hours=args.hours or p.hours)
+    print(f"Loading {args.days} days of 5-minute candles for {p.product_id} ...")
+    res = tm.run(plan, bars(p.product_id, args.days), runs=args.runs, seed=args.seed, fee_pct=p.fee_pct)
+    print(tm.report(res))
+    write_json(folder(cfg.data_dir) / "odds.json", res.to_dict())
+    return 0
+
+
+def cmd_ticket(cfg: Config, args) -> int:
+    from .daytrade import plan as tp
+
+    p = tp.load(cfg.data_dir)
+    if not p:
+        print("No plan yet: run `cbagent plan PRODUCT ...` first.")
+        return 1
+    if args.reply is not None:
+        ok, why = tp.approve(p, args.reply, cfg.data_dir)
+        print(("Recorded your yes for ticket " if ok else "Not recorded for ticket ") + f"{p.fingerprint()}: {why}.")
+        print("Nothing was sent. Placing it is a separate step through the Coinbase connector." if ok else "Ask again.")
+        return 0 if ok else 1
+    print(tp.ticket(p, open_position=args.open_position))
+    if tp.approved(p, cfg.data_dir):
+        print("Status: your yes is recorded for this exact ticket.")
+    return 0
+
+
+def cmd_alerts(cfg: Config, args) -> int:
+    from .daytrade import alerts
+    from .daytrade import plan as tp
+
+    if args.action == "add":
+        if args.from_plan:
+            p = tp.load(cfg.data_dir)
+            if not p:
+                print("No plan to take levels from.")
+                return 1
+            stop_dir, target_dir = ("below", "above") if p.side == "long" else ("above", "below")
+            for d, price, note in ((stop_dir, p.stop, "stop"), (target_dir, p.target, "target")):
+                a = alerts.add(cfg.data_dir, p.product_id, d, price, note)
+                print(f"Added [{a['id']}] {a['product_id']} {d} {price:g} ({note})")
+            return 0
+        if not (args.product and args.direction and args.price):
+            print("Usage: cbagent alerts add PRODUCT above|below PRICE [--note TEXT], or --from-plan")
+            return 1
+        a = alerts.add(cfg.data_dir, args.product, args.direction, args.price, args.note or "")
+        print(f"Added [{a['id']}] {a['product_id']} {a['direction']} {a['price']:g}")
+    elif args.action == "check":
+        rang = alerts.check(cfg.data_dir)
+        print("\n".join(rang) if rang else "Nothing rang.")
+    elif args.action == "clear":
+        print(f"Removed {alerts.remove(cfg.data_dir, args.id or None)} alerts.")
+    else:
+        print(alerts.listing(cfg.data_dir))
+    return 0
+
+
 def _live_loop(cfg: Config, engine: Engine, once: bool) -> int:
     strategy = engine.strategy
     while True:
@@ -381,6 +498,62 @@ def main(argv: list[str] | None = None) -> int:
     db.add_argument("--runs", default=None, help="GitHub Actions runs JSON (default data/workflow_runs.json)")
     db.add_argument("--repo", default="ram660/coinbase-trading", help="owner/name, for links")
     db.set_defaults(fn=cmd_dashboard)
+
+    def plan_args(sp, product_required: bool) -> None:
+        sp.add_argument("product", nargs=None if product_required else "?", help="e.g. QNT-USDC")
+        sp.add_argument("--side", default="long", choices=["long", "short"])
+        sp.add_argument("--entry", help="entry price (default: the live price)")
+        sp.add_argument("--stop", default="loss:5", help="loss:5, pct:3, atr:2 or price:X (default loss:5)")
+        sp.add_argument("--target", default="gain:5", help="gain:5, R:1.5, pct:4, atr:3 or price:X (default gain:5)")
+        sp.add_argument("--budget", type=float, default=75, help="quote to spend (default 75)")
+        sp.add_argument("--max-loss", type=float, help="cut the spend so the loss at the stop stays under this")
+        sp.add_argument("--fee", type=float, default=0.5, help="fee %% each way (default 0.5)")
+
+    st = sub.add_parser("setups", help="intraday setups on 5-minute candles across liquid coins (read-only)")
+    st.add_argument("--product", action="append", help="only these products (default: every liquid pair)")
+    st.add_argument("--quote", default="USDC")
+    st.add_argument("--min-volume", type=float, default=5_000_000)
+    st.add_argument("--setup", action="append", choices=["range_break", "break_24h", "volume_spike", "rsi_bounce", "rsi_fade"])
+    st.add_argument("--fresh", type=int, default=2, help="how many latest candles count as now")
+    st.add_argument("--range-minutes", type=int, default=60, help="UTC-day opening range length")
+    st.set_defaults(fn=cmd_setups)
+
+    en = sub.add_parser("entry", help="is a setup waiting, triggered or expired on one coin (read-only)")
+    en.add_argument("product")
+    en.add_argument("--setup", default="range_break", choices=["range_break", "break_24h", "volume_spike", "rsi_bounce", "rsi_fade"])
+    en.add_argument("--watch", action="store_true", help="keep checking until it triggers or expires")
+    en.add_argument("--every", type=int, default=60, help="seconds between checks with --watch")
+    en.add_argument("--fresh", type=int, default=2)
+    en.add_argument("--range-minutes", type=int, default=60)
+    en.set_defaults(fn=cmd_entry)
+
+    pl = sub.add_parser("plan", help="stop, target and size for one trade, saved to data/daytrade/plan.json")
+    plan_args(pl, True)
+    pl.add_argument("--hours", type=float, default=24, help="how long the trade may stay open")
+    pl.set_defaults(fn=cmd_plan)
+
+    od = sub.add_parser("odds", help="Time Machine: replay the plan over the coin's own 5-minute candles (read-only)")
+    plan_args(od, False)
+    od.add_argument("--hours", type=float, default=None, help="how long the trade may stay open (default: the plan's, 24)")
+    od.add_argument("--days", type=float, default=30, help="lookback of 5-minute candles")
+    od.add_argument("--runs", type=int, default=10_000)
+    od.add_argument("--seed", type=int, default=7)
+    od.set_defaults(fn=cmd_odds)
+
+    tk = sub.add_parser("ticket", help="the plan as an order ticket; --reply records Ram's yes (never sends)")
+    tk.add_argument("--reply", help="Ram's reply, word for word")
+    tk.add_argument("--open-position", action="store_true", help="a live position is already open")
+    tk.set_defaults(fn=cmd_ticket)
+
+    al = sub.add_parser("alerts", help="price alerts: list, add, check, clear")
+    al.add_argument("action", nargs="?", default="list", choices=["list", "add", "check", "clear"])
+    al.add_argument("product", nargs="?")
+    al.add_argument("direction", nargs="?", choices=["above", "below"])
+    al.add_argument("price", nargs="?", type=float)
+    al.add_argument("--note")
+    al.add_argument("--from-plan", action="store_true", help="add the plan's stop and target")
+    al.add_argument("--id", type=int, action="append", help="with clear: remove these (default: the ones that rang)")
+    al.set_defaults(fn=cmd_alerts)
 
     pp = sub.add_parser("paper", help="paper trade against live prices (default, safe)")
     pp.add_argument("--once", action="store_true", help="run one tick and exit")
