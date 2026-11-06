@@ -107,6 +107,38 @@ closes only. Treat it as optimistic.
 Access: Coinbase opened perps to eligible Canadians in September 2026 through Coinbase Financial Markets. Reports
 put eligibility at investors with at least $5M in net financial assets; check the Futures tab in the app.
 
+## Intraday tools
+
+A crypto version of the ideas in the day-trader skill pack (github.com/Jakeschincariol/day-trader-skill), written
+fresh for Coinbase's 24/7 markets. They read public 5-minute candles and local files. None of them places an order.
+
+```
+cbagent setups                                  # liquid USDC pairs: range_break, break_24h, volume_spike, rsi_bounce, rsi_fade
+cbagent entry QNT-USDC --setup range_break      # waiting / triggered / expired; --watch keeps checking
+cbagent plan QNT-USDC                           # live price, stop loss:5, target gain:5, spend $75 -> data/daytrade/plan.json
+cbagent plan BTC-USDC --stop atr:2 --target R:2 --max-loss 4
+cbagent odds                                    # Time Machine on the saved plan
+cbagent ticket                                  # the plan as a ticket with the exact orders_create arguments
+cbagent ticket --reply "yes QNT"                # records Ram's reply word for word; only an explicit yes counts
+cbagent alerts add --from-plan                  # stop and target alerts; `cbagent alerts check` rings each once
+```
+
+- **Setups**: crypto has no opening bell, so the opening range is the first hour of the UTC day.
+- **Plan** rules: stop `loss:5`, `pct:3`, `atr:2` (1-hour ATR) or `price:X`; target `gain:5`, `R:1.5`, `pct:4`,
+  `atr:3` or `price:X`. `loss:` and `gain:` are dollars on the position with fees in and out included. Prices
+  are rounded to the product's increment.
+- **Time Machine** (`odds`): rebuilds the next 24 hours 10,000 times from the coin's own 5-minute candles at the
+  same time of day, and tests the same % distances from every past close in the lookback (30 days by default).
+  It reports target first / stop first / still open and the average result in R after fees. If one candle touches
+  both levels it counts as a stop. It replays the recent past; it doesn't forecast.
+- **Quiet mode** for schedules: `cbagent setups --quiet` prints the full report on the first run of the UTC day,
+  then only hits (coin, setup, side) not yet reported today, and nothing otherwise. `cbagent alerts check --quiet`
+  prints only what rang, so a price that can't be fetched shows once a day instead of every run. The state is
+  `data/daytrade/seen_today.json`.
+- **Ticket**: shows whether the order fits Ram's standing approval (one spot BUY in USDC, at most $75, with TP and
+  stop, no live position open) or needs his yes. These notes inform; they don't block. Sending the order stays a
+  separate step under CLAUDE.md rule 1.
+
 ## Live trading
 
 Step-by-step for the $100 test: [docs/GOING_LIVE.md](docs/GOING_LIVE.md). `cbagent live-check` is a read-only check
