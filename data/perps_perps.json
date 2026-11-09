@@ -1,15 +1,20 @@
 {
- "cash": 1000.0,
- "positions": {},
- "fees": 0.0,
- "fees_stress": 0.0,
+ "cash": 999.695036996,
+ "positions": {
+  "ETH": {
+   "contracts": -2,
+   "entry": 2124.0751
+  }
+ },
+ "fees": 0.304963004,
+ "fees_stress": 0.43240751,
  "funding": 0.0,
  "realized": 0.0,
  "liquidations": 0,
  "peak": 1000.0,
  "stopped": false,
- "last_rebalance": 1794181543.5733938,
- "last_run": 1794181543,
+ "last_rebalance": 1794182474.2348053,
+ "last_run": 1794182474,
  "equity": [
   [
    1793904870,
@@ -1242,14 +1247,18 @@
   [
    1794181543,
    1000.0
+  ],
+  [
+   1794182474,
+   999.61
   ]
  ],
  "premiums": {
-  "BTC": -0.000305,
-  "ETH": 0.000428
+  "BTC": 0.000146,
+  "ETH": -0.000386
  },
  "prices": {
-  "BTC": 74360.0,
-  "ETH": 2127.5
+  "BTC": 74765.0,
+  "ETH": 2124.5
  }
 }
