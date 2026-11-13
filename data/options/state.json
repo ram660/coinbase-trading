@@ -1,0 +1,26 @@
+{
+ "last_run": 1794551241,
+ "regimes": {
+  "AAPL": "bull",
+  "AMD": "bull",
+  "AMZN": "bull",
+  "BTC-USD": "bear",
+  "COIN": "bear",
+  "ETH-USD": "bear",
+  "ETHA": "bear",
+  "GOOGL": "bear",
+  "HOOD": "bear",
+  "IBIT": "bear",
+  "IWM": "flat",
+  "MARA": "bear",
+  "META": "bear",
+  "MSFT": "flat",
+  "MSTR": "bear",
+  "NVDA": "bear",
+  "PLTR": "flat",
+  "QQQ": "flat",
+  "SOL-USD": "bear",
+  "SPY": "flat",
+  "TSLA": "bull"
+ }
+}
