@@ -139,6 +139,30 @@ cbagent alerts add --from-plan                  # stop and target alerts; `cbage
   stop, no live position open) or needs his yes. These notes inform; they don't block. Sending the order stays a
   separate step under CLAUDE.md rule 1.
 
+## Options ideas on Telegram
+
+`cbagent options` screens stocks, ETFs and crypto (list in `[options_alerts]` in `config/default.toml`) with one
+stated rule: the live price against the 50- and 200-day averages of closed daily candles. Above both is a calls
+idea, below both a puts idea, anything else is flat. A flat name has to clear the far average by 1% to become an
+idea, and an idea ends when the price crosses back over either average. Crypto has no options on Wealthsimple, so
+BTC, ETH and SOL are shown with the listed names that stand in for them (IBIT, MSTR, COIN, ETHA). Each idea shows
+the averages, RSI, 20-day realized volatility and the 30-day move it implies, and the price that ends it. Stocks
+and ETFs come from Yahoo Finance's public chart data, crypto from Coinbase. Alerts only: nothing here places orders.
+
+The `options-alerts` workflow runs it every 30 minutes and sends to Telegram: a message when a name's trend
+changes, and a digest on the first run after 14:00 UTC (6 am Vancouver). State is on the `options-state` branch.
+
+Setup, once:
+1. In Telegram, message @BotFather, send `/newbot`, and copy the token it gives you.
+2. Send your new bot any message (say "hi").
+3. In GitHub, Settings > Secrets and variables > Actions, add `TELEGRAM_BOT_TOKEN`.
+4. Find your chat id: locally, put `TELEGRAM_BOT_TOKEN=...` in `config/.env` and run `cbagent telegram chat-id`; or open
+   `https://api.telegram.org/bot<token>/getUpdates` in a browser and read `"chat":{"id":...}`. Add it as
+   `TELEGRAM_CHAT_ID`.
+5. Actions > options-alerts > Run workflow sends a digest right away. `cbagent telegram test` sends a test message.
+
+`cbagent alerts check --send` also sends rung price alerts to Telegram.
+
 ## Live trading
 
 Step-by-step for the $100 test: [docs/GOING_LIVE.md](docs/GOING_LIVE.md). `cbagent live-check` is a read-only check
