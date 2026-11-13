@@ -48,7 +48,7 @@ jobs:
         run: |
           SEND=""
           if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then SEND="--send"; else echo "Telegram secrets not set: printing only."; fi
-          PYTHONPATH=src python -m cbagent options --watch $SEND ${{ inputs.digest && '--digest' || '' }}
+          PYTHONPATH=src python -m cbagent options --watch $SEND ${{ (inputs.digest || github.event_name == 'push') && '--digest' || '' }}
 
       - name: Save state
         if: ${{ !cancelled() }}
