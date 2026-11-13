@@ -1,6 +1,6 @@
 # Options ideas to Telegram: trend changes as they happen and a digest each morning. Alerts only: this workflow has
 # no exchange keys and places nothing. Options are placed by hand (Wealthsimple has no API).
-# Needs two repository secrets: TELEGRAM_BOT_TOKEN (from @BotFather) and TELEGRAM_CHAT_ID (`cbagent telegram chat-id`).
+# Needs two secrets in the `default` GitHub environment: TELEGRAM_BOT_TOKEN (from @BotFather) and TELEGRAM_CHAT_ID (`cbagent telegram chat-id`).
 # Without them it still runs and prints the ideas in the log. State lives on the `options-state` branch.
 name: options-alerts
 
@@ -27,6 +27,7 @@ concurrency:
 jobs:
   alerts:
     runs-on: ubuntu-latest
+    environment: default   # the Telegram secrets live in this GitHub environment
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
