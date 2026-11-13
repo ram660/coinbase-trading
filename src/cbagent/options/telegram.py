@@ -19,6 +19,14 @@ def credentials(env: dict[str, str] | None = None) -> tuple[str, str]:
     return token, env.get("TELEGRAM_CHAT_ID", "").strip().strip('"\'')
 
 
+def token_shape(token: str) -> str:
+    """Describe the token without revealing it: a real one is digits, a colon, then about 35 letters."""
+    head, _, tail = token.partition(":")
+    if head.isdigit() and len(tail) >= 30:
+        return "looks like a bot token"
+    return f"doesn't look like a bot token ({len(token)} characters, {'has' if ':' in token else 'no'} colon)"
+
+
 def _call(token: str, method: str, params: dict) -> dict:
     data = urllib.parse.urlencode(params).encode()
     req = urllib.request.Request(API.format(token=token, method=method), data=data)
@@ -30,7 +38,7 @@ def _call(token: str, method: str, params: dict) -> dict:
             desc = json.load(e).get("description", "")
         except Exception:
             desc = ""
-        hint = " (Telegram says this when the bot token is wrong)" if e.code in (401, 404) else ""
+        hint = f" (Telegram says this when the bot token is wrong; it {token_shape(token)})" if e.code in (401, 404) else ""
         raise RuntimeError(f"Telegram {method} failed: HTTP {e.code} {desc}{hint}".rstrip()) from None
     except urllib.error.URLError as e:
         raise RuntimeError(f"Telegram {method} failed: {e.reason}") from None
