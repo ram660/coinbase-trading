@@ -47,6 +47,7 @@ class Config:
     env: dict[str, str] = field(repr=False, default_factory=dict)
     live: dict = field(default_factory=dict)
     portfolio: dict = field(default_factory=dict)
+    options_alerts: dict = field(default_factory=dict)
 
     @property
     def kill_switch_path(self) -> Path:
@@ -68,7 +69,7 @@ def _read_env(path: Path) -> dict[str, str]:
             if line and not line.startswith("#") and "=" in line:
                 key, value = line.split("=", 1)
                 env[key.strip()] = value.strip().strip('"').replace("\\n", "\n")
-    for key in ("COINBASE_API_KEY", "COINBASE_API_SECRET", "CBAGENT_LIVE_CONFIRM"):
+    for key in ("COINBASE_API_KEY", "COINBASE_API_SECRET", "CBAGENT_LIVE_CONFIRM", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
         if os.environ.get(key):
             env[key] = os.environ[key]
     return env
@@ -123,4 +124,5 @@ def load_config(config_dir: Path = CONFIG_DIR) -> Config:
         env=_read_env(config_dir / ".env"),
         live=dict(raw.get("live", {})),
         portfolio=dict(raw.get("portfolio", {})),
+        options_alerts=dict(raw.get("options_alerts", {})),
     )

@@ -1,0 +1,66 @@
+# Options ideas to Telegram: trend changes as they happen and a digest each morning. Alerts only: this workflow has
+# no exchange keys and places nothing. Options are placed by hand (Wealthsimple has no API).
+# Needs two repository secrets: TELEGRAM_BOT_TOKEN (from @BotFather) and TELEGRAM_CHAT_ID (`cbagent telegram chat-id`).
+# Without them it still runs and prints the ideas in the log. State lives on the `options-state` branch.
+name: options-alerts
+
+on:
+  schedule:
+    # Every 30 minutes. Stocks only move during US hours, crypto all day; a trend change is sent once, when it happens.
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: "Send the digest now"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write   # push state to the options-state branch
+
+concurrency:
+  group: options-alerts
+  cancel-in-progress: false
+
+jobs:
+  alerts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Restore state
+        run: |
+          git fetch origin options-state || true
+          if git rev-parse --verify origin/options-state >/dev/null 2>&1; then
+            git checkout origin/options-state -- data/options/ || true
+          fi
+
+      - name: Screen and alert
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          SEND=""
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then SEND="--send"; else echo "Telegram secrets not set: printing only."; fi
+          PYTHONPATH=src python -m cbagent options --watch $SEND ${{ inputs.digest && '--digest' || '' }}
+
+      - name: Save state
+        if: ${{ !cancelled() }}
+        run: |
+          git config user.name "options-alerts-bot"
+          git config user.email "options-alerts-bot@users.noreply.github.com"
+          mkdir -p /tmp/state && cp -r data/options /tmp/state/ 2>/dev/null || exit 0
+          git fetch origin options-state || true
+          if git rev-parse --verify origin/options-state >/dev/null 2>&1; then
+            git checkout -B options-state origin/options-state
+          else
+            git checkout --orphan options-state && git rm -rf --cached . >/dev/null && git clean -fdx -e /tmp
+          fi
+          rm -rf data/options && mkdir -p data && cp -r /tmp/state/options data/options
+          git add -f data/options
+          git commit -m "options state $(date -u +%Y-%m-%dT%H:%MZ)" || echo "no changes"
+          git push origin options-state

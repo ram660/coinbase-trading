@@ -63,3 +63,20 @@ holdings = ["HBAR", "QNT", "LCX", "RENDER", "ARB"]
 starting_cash = 1000
 fee_pct = 0.5        # Coinbase Advanced taker fee on the Intro tier (Nov 2026)
 slippage_pct = 0.05
+
+[options_alerts]
+# `cbagent options` screens these for options ideas (placed by hand on Wealthsimple; nothing here trades) and the
+# options-alerts workflow sends trend changes and a daily digest to Telegram. Rule: live price vs the 50- and 200-day
+# averages of closed daily candles; above both = calls, below both = puts. See src/cbagent/options/screen.py.
+stocks = ["IBIT", "ETHA", "COIN", "MSTR", "MARA", "HOOD", "SPY", "QQQ", "IWM",
+          "NVDA", "TSLA", "AAPL", "AMD", "META", "AMZN", "MSFT", "GOOGL", "PLTR"]
+crypto = ["BTC-USD", "ETH-USD", "SOL-USD"]
+buffer_pct = 1.0                 # a flat name must clear the far average by this much to become an idea
+min_dollar_volume = 50_000_000   # 20-day average; thinner names are left out of the digest
+digest_hour_utc = 14             # first run at or after this hour sends the daily digest (6 am Vancouver in winter)
+
+[options_alerts.proxies]
+# Crypto has no options on Wealthsimple; these listed names stand in for it.
+"BTC-USD" = ["IBIT", "MSTR", "COIN"]
+"ETH-USD" = ["ETHA", "COIN"]
+"SOL-USD" = ["COIN"]

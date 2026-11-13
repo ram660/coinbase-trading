@@ -303,6 +303,38 @@ def cmd_ticket(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_options(cfg: Config, args) -> int:
+    """Options ideas by the trend rule. Read-only on markets; --watch keeps state for the scheduled run; --send uses Telegram."""
+    from .options import screen, telegram
+
+    if args.watch:
+        messages = screen.watch(cfg.data_dir, cfg.options_alerts, force_digest=args.digest)
+    else:
+        s = {**screen.DEFAULTS, **cfg.options_alerts}
+        readings, errors = screen.scan(s, screen.load_state(cfg.data_dir).get("regimes", {}))
+        messages = [screen.digest(readings, errors, float(s["min_dollar_volume"]))]
+    for m in messages:
+        print(m, end="\n\n")
+    if not messages:
+        print("No trend changes.")
+    if args.send and messages:
+        sent = telegram.send("\n\n".join(messages), cfg.env)
+        print(f"Sent {sent} Telegram message(s).")
+    return 0
+
+
+def cmd_telegram(cfg: Config, args) -> int:
+    from .options import telegram
+
+    if args.action == "chat-id":
+        ids = telegram.find_chat_ids(cfg.env)
+        print("\n".join(ids) if ids else "No chats yet. Send your bot any message in Telegram, then run this again.")
+    else:
+        telegram.send("cbagent: Telegram alerts are set up. Options ideas and trend changes will arrive here.", cfg.env)
+        print("Test message sent.")
+    return 0
+
+
 def cmd_alerts(cfg: Config, args) -> int:
     from .daytrade import alerts
     from .daytrade import plan as tp
@@ -332,6 +364,10 @@ def cmd_alerts(cfg: Config, args) -> int:
             rang = [k.removeprefix("alert|") for k in new]  # an unavailable price is reported once a day, not every run
         if rang or not args.quiet:
             print("\n".join(rang) if rang else "Nothing rang.")
+        if args.send and rang:
+            from .options import telegram
+
+            telegram.send("Price alerts\n" + "\n".join(rang), cfg.env)
     elif args.action == "clear":
         print(f"Removed {alerts.remove(cfg.data_dir, args.id or None)} alerts.")
     else:
@@ -571,7 +607,18 @@ def main(argv: list[str] | None = None) -> int:
     al.add_argument("--from-plan", action="store_true", help="add the plan's stop and target")
     al.add_argument("--quiet", action="store_true", help="with check: print only what rang, each line once a UTC day")
     al.add_argument("--id", type=int, action="append", help="with clear: remove these (default: the ones that rang)")
+    al.add_argument("--send", action="store_true", help="with check: also send what rang to Telegram")
     al.set_defaults(fn=cmd_alerts)
+
+    op = sub.add_parser("options", help="options ideas by the trend rule (alerts only, never orders)")
+    op.add_argument("--watch", action="store_true", help="scheduled run: report trend changes, digest once a day")
+    op.add_argument("--digest", action="store_true", help="with --watch: send the digest now")
+    op.add_argument("--send", action="store_true", help="also send to Telegram")
+    op.set_defaults(fn=cmd_options)
+
+    tg = sub.add_parser("telegram", help="Telegram: send a test message, or list chat ids that messaged the bot")
+    tg.add_argument("action", choices=["test", "chat-id"])
+    tg.set_defaults(fn=cmd_telegram)
 
     pp = sub.add_parser("paper", help="paper trade against live prices (default, safe)")
     pp.add_argument("--once", action="store_true", help="run one tick and exit")
