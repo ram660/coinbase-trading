@@ -8,6 +8,8 @@ on:
   schedule:
     # Every 30 minutes. Stocks only move during US hours, crypto all day; a trend change is sent once, when it happens.
     - cron: "7,37 * * * *"
+  push:  # TEMPORARY: lets the PR branch test-send before merge; remove before merging
+    branches: [claude/project-thread-qrd1tw]
   workflow_dispatch:
     inputs:
       digest:
