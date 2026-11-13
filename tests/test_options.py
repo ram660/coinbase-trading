@@ -119,6 +119,10 @@ class TelegramTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             telegram.send("hi", {"TELEGRAM_BOT_TOKEN": "t"}, call=lambda *a: {})
 
+    def test_credentials_cleanup(self):
+        tok, chat = telegram.credentials({"TELEGRAM_BOT_TOKEN": ' bot123:ABC\n', "TELEGRAM_CHAT_ID": '"42" '})
+        self.assertEqual((tok, chat), ("123:ABC", "42"))
+
     def test_find_chat_ids(self):
         upd = {"result": [{"message": {"chat": {"id": 7, "first_name": "Ram"}}},
                           {"message": {"chat": {"id": 7, "first_name": "Ram"}}}]}

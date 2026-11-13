@@ -13,7 +13,10 @@ MAX_LEN = 4000  # Telegram's limit is 4096 characters
 
 def credentials(env: dict[str, str] | None = None) -> tuple[str, str]:
     env = {**(env or {}), **{k: v for k, v in os.environ.items() if k.startswith("TELEGRAM_") and v}}
-    return env.get("TELEGRAM_BOT_TOKEN", ""), env.get("TELEGRAM_CHAT_ID", "")
+    token = env.get("TELEGRAM_BOT_TOKEN", "").strip().strip('"\'')
+    if token.lower().startswith("bot") and ":" in token:  # pasted with the URL's "bot" prefix
+        token = token[3:]
+    return token, env.get("TELEGRAM_CHAT_ID", "").strip().strip('"\'')
 
 
 def _call(token: str, method: str, params: dict) -> dict:
@@ -27,7 +30,8 @@ def _call(token: str, method: str, params: dict) -> dict:
             desc = json.load(e).get("description", "")
         except Exception:
             desc = ""
-        raise RuntimeError(f"Telegram {method} failed: HTTP {e.code} {desc}".rstrip()) from None
+        hint = " (Telegram says this when the bot token is wrong)" if e.code in (401, 404) else ""
+        raise RuntimeError(f"Telegram {method} failed: HTTP {e.code} {desc}{hint}".rstrip()) from None
     except urllib.error.URLError as e:
         raise RuntimeError(f"Telegram {method} failed: {e.reason}") from None
 
