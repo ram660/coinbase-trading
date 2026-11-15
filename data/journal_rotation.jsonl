@@ -2921,3 +2921,6 @@
 {"ts": "2026-11-15T12:15:50.551242+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ELSA-USDC'"}
 {"ts": "2026-11-15T12:15:59.096426+00:00", "book": "fast", "event": "rebalance", "note": "BTC below its 200-bar average: holding cash", "equity": 969.3689564249412}
 {"ts": "2026-11-15T12:15:59.623471+00:00", "book": "perps", "event": "rebalance", "note": "BTC short 0.58x, ETH short 0.33x", "equity": 1121.0712801085658}
+{"ts": "2026-11-15T12:31:04.925178+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ELSA-USDC'"}
+{"ts": "2026-11-15T12:31:14.898168+00:00", "book": "fast", "event": "rebalance", "note": "BTC below its 200-bar average: holding cash", "equity": 969.3689564249412}
+{"ts": "2026-11-15T12:31:15.979242+00:00", "book": "perps", "event": "rebalance", "note": "BTC short 0.58x, ETH short 0.33x", "equity": 1121.0737652911732}
