@@ -125,23 +125,28 @@ const state: Record<string, number> = fs.existsSync(STATE) ? JSON.parse(fs.readF
 // --- Paper book: every alert opens a simulated position on the underlying (puts = short underlying, as a proxy) ---
 // shortcut: option alerts are tracked on the underlying, not the contract premium; add chain re-quotes if options P&L matters.
 type Pos = { id: string; sym: string; kind: 'mongap' | 'signal'; crypto: boolean; dir: 1 | -1; entry: number; stop: number; target: number | null;
-  qty: number; fx: number; costCad: number; openedAt: number; openedDate: string; label: string };
+  qty: number; fx: number; costCad: number; openedAt: number; openedDate: string; label: string;
+  filtered?: string }; // set = a raw signal the filters blocked; tracked silently to measure whether the filters help
 type Closed = Pos & { exit: number; closedAt: number; pnlCad: number; reason: string };
+// Every alert is recorded: no cash cap, so cash can go negative (it then shows capital over the START_CAD budget).
 const book: { cashCad: number; open: Pos[]; closed: Closed[] } =
   fs.existsSync(BOOK) ? JSON.parse(fs.readFileSync(BOOK, 'utf8')) : { cashCad: START_CAD, open: [], closed: [] };
 const pnlOf = (p: Pos, exit: number) =>
   p.dir * (exit - p.entry) * p.qty * p.fx - p.costCad * (FEE_PCT[p.crypto ? 'crypto' : 'stock'] / 100) * 2;
 function openPaper(p: Omit<Pos, 'id' | 'qty' | 'fx' | 'costCad' | 'openedAt' | 'openedDate'>, fx: number): string {
-  if (book.open.some((o) => o.sym === p.sym)) return `\n📝 Paper: already holding ${esc(p.sym)}, not added`;
-  if (book.cashCad < POSITION_CAD) return `\n📝 Paper: skipped, only $${book.cashCad.toFixed(0)} CAD cash left`;
+  // one open trade per symbol per track (alerted / filtered): a repeat of the same signal is the same trade
+  if (book.open.some((o) => o.sym === p.sym && !o.filtered === !p.filtered)) return p.filtered ? '' : `\n📝 Paper: already holding ${esc(p.sym)}`;
   book.open.push({ ...p, id: `${p.sym}-${Date.now()}`, qty: POSITION_CAD / fx / p.entry, fx, costCad: POSITION_CAD, openedAt: Date.now(), openedDate: nowEt.date });
+  if (p.filtered) return '';
   book.cashCad -= POSITION_CAD;
   return `\n📝 Paper ${p.dir === 1 ? 'LONG' : 'SHORT'} $${POSITION_CAD} CAD @ <code>${p.entry.toFixed(2)}</code>`;
 }
 const money = (v: number) => `${v >= 0 ? '+' : '-'}$${Math.abs(v).toFixed(2)}`;
 function bookLine() {
-  const realized = book.closed.reduce((a, c) => a + c.pnlCad, 0), wins = book.closed.filter((c) => c.pnlCad > 0).length;
-  return `Book: realized <b>${money(realized)}</b> · ${book.closed.length} closed (${wins} won) · ${book.open.length} open · cash $${book.cashCad.toFixed(0)}`;
+  const line = (xs: Closed[]) => `${money(xs.reduce((a, c) => a + c.pnlCad, 0))} · ${xs.length} closed (${xs.filter((c) => c.pnlCad > 0).length} won)`;
+  const alerted = book.closed.filter((c) => !c.filtered), filtered = book.closed.filter((c) => c.filtered);
+  return `Book: realized <b>${line(alerted)}</b> · ${book.open.filter((o) => !o.filtered).length} open · cash $${book.cashCad.toFixed(0)}` +
+    `\nFiltered-out signals: ${line(filtered)} · ${book.open.filter((o) => o.filtered).length} open`;
 }
 // Check one open position against the bars since entry. Returns a Telegram line if it closed.
 function manage(p: Pos, all: Bar[]): string | null {
@@ -160,16 +165,18 @@ function manage(p: Pos, all: Bar[]): string | null {
   if (exit === null) return null;
   const pnlCad = pnlOf(p, exit);
   book.open = book.open.filter((o) => o.id !== p.id);
-  book.cashCad += p.costCad + pnlCad;
   book.closed.push({ ...p, exit, closedAt: Date.now(), pnlCad, reason });
+  if (p.filtered) return null; // silent: shows up in the daily recap
+  book.cashCad += p.costCad + pnlCad;
   return `${pnlCad >= 0 ? '✅' : '🛑'} <b>Paper CLOSE ${esc(p.sym)}</b> (${esc(p.label)}) · ${reason}\n` +
     `${p.entry.toFixed(2)} → ${exit.toFixed(2)} · <b>${money(pnlCad)} CAD</b> (${((pnlCad / p.costCad) * 100).toFixed(1)}%)`;
 }
 
 if (process.argv.includes('--report')) {
   console.log(bookLine().replace(/<[^>]+>/g, ''));
-  for (const c of book.closed) console.log(`closed ${c.sym.padEnd(8)} ${c.label.padEnd(16)} ${c.entry.toFixed(2)} -> ${c.exit.toFixed(2)}  ${c.pnlCad.toFixed(2)} CAD (${c.reason})`);
-  for (const o of book.open) console.log(`open   ${o.sym.padEnd(8)} ${o.label.padEnd(16)} ${o.dir === 1 ? 'long' : 'short'} @ ${o.entry.toFixed(2)} stop ${o.stop.toFixed(2)} target ${o.target?.toFixed(2) ?? '-'}`);
+  const tag = (p: Pos) => (p.filtered ? ` [filtered: ${p.filtered}]` : '');
+  for (const c of book.closed) console.log(`closed ${c.sym.padEnd(8)} ${c.label.padEnd(16)} ${c.entry.toFixed(2)} -> ${c.exit.toFixed(2)}  ${c.pnlCad.toFixed(2)} CAD (${c.reason})${tag(c)}`);
+  for (const o of book.open) console.log(`open   ${o.sym.padEnd(8)} ${o.label.padEnd(16)} ${o.dir === 1 ? 'long' : 'short'} @ ${o.entry.toFixed(2)} stop ${o.stop.toFixed(2)} target ${o.target?.toFixed(2) ?? '-'}${tag(o)}`);
   process.exit(0);
 }
 const now = Date.now();
@@ -178,13 +185,13 @@ try { const fx = await candles('CAD=X'); usdcad = fx[fx.length - 1].close; } cat
 
 for (const meta of WATCHLIST) {
   const stock = meta.assetClass !== 'Crypto';
-  const held = book.open.find((p) => p.sym === meta.symbol);
+  const held = book.open.filter((p) => p.sym === meta.symbol);
   // stocks: only during the session, except a Monday trade from an earlier day gets settled at that day's close
-  if (stock && !usOpen && !(held?.kind === 'mongap' && held.openedDate !== nowEt.date)) continue;
+  if (stock && !usOpen && !held.some((h) => h.kind === 'mongap' && h.openedDate !== nowEt.date)) continue;
   try {
     const all = await candles(meta.symbol);
     if (all.length < 350) continue;
-    if (held) { const line = manage(held, all); if (line) await send(line + '\n' + bookLine()); }
+    for (const h of held) { const line = manage(h, all); if (line) await send(line + '\n' + bookLine()); }
     if (stock && !usOpen) continue;
 
     // 1) Monday gap-down bounce (stocks). Backtest: gap down >0.5% at Monday open, buy after the first hour,
@@ -211,11 +218,15 @@ for (const meta of WATCHLIST) {
     const c = all.slice(-180);
     const s = buildTechnicalSummary(meta, c, computeIndicatorSeries(c), stock ? 'TFSA' : 'Crypto');
     const st = s.strategy;
-    if (!['Buy Call', 'Buy Put', 'Spot Accumulate'].includes(st.action) || st.confidence < MIN_CONF) continue;
+    if (!['Buy Call', 'Buy Put', 'Spot Accumulate'].includes(st.action)) continue;
+    const bear = st.action === 'Buy Put';
+    const record = (filtered: string) =>
+      openPaper({ sym: meta.symbol, kind: 'signal', crypto: !stock, dir: bear ? -1 : 1, entry: s.price, stop: st.stopLossPrice, target: st.targetPrice, label: st.action, filtered }, usdcad);
     // Backtest: trend-aligned ~+0.08R vs ~+0.03R unfiltered; RSI guard avoids chasing exhaustion. SPY filter tested, didn't help.
     const closes = all.map((x) => x.close), slow = sma(closes, 350), fast = sma(closes, 100);
-    const bear = st.action === 'Buy Put';
-    if (bear ? !(s.price < slow && fast < slow) || s.rsi < 30 : !(s.price > slow && fast > slow) || s.rsi > 70) continue;
+    if (st.confidence < MIN_CONF) { record(`confidence ${st.confidence}`); continue; }
+    if (bear ? !(s.price < slow && fast < slow) : !(s.price > slow && fast > slow)) { record('against trend'); continue; }
+    if (bear ? s.rsi < 30 : s.rsi > 70) { record(`RSI ${s.rsi.toFixed(0)}`); continue; }
     const key = `${meta.symbol}:${st.action}`;
     if (now - (state[key] ?? 0) < COOLDOWN_MS) continue;
 
@@ -226,6 +237,7 @@ for (const meta of WATCHLIST) {
         const days = ed ? Math.ceil((ed.getTime() - now) / DAY) : null;
         if (days !== null && days >= 0 && days <= EARNINGS_DAYS) {
           console.log(`${meta.symbol}: skip ${st.action}, earnings in ${days}d (${ed!.toISOString().slice(0, 10)})`);
+          record(`earnings in ${days}d`);
           continue; // IV crush + gap risk: a single-leg option through earnings is a coin flip you pay for
         }
         optionLines += `\nEarnings: ${ed ? `${ed.toISOString().slice(0, 10)} (${days}d)` : 'unknown, check before buying'}`;
@@ -252,7 +264,7 @@ for (const meta of WATCHLIST) {
       (meta.optionsEligible
         ? `\n<b>Exit plan</b>: sell at -40% premium or if price goes ${bear ? 'above' : 'below'} stop · take half off at +50% · close by ~21 DTE`
         : `\n<b>Risk plan</b>: spot only · size so a stop-out costs ≤1-2% of account · limit orders (spread ~1.5%)`) +
-      openPaper({ sym: meta.symbol, kind: 'signal', crypto: !stock, dir: bear ? -1 : 1, entry: s.price, stop: st.stopLossPrice, target: st.targetPrice, label: st.action }, usdcad) +
+      record('') +
       `\n<i>Alert only. Place manually in Wealthsimple.</i>`,
     );
     state[key] = now;
@@ -265,8 +277,8 @@ for (const meta of WATCHLIST) {
 if (nowEt.mins >= 965 && !state[`summary:${nowEt.date}`]) {
   const today = book.closed.filter((c) => et(c.closedAt).date === nowEt.date);
   await send(`📊 <b>Paper recap ${nowEt.date}</b>\n` +
-    (today.length ? today.map((c) => `${c.pnlCad >= 0 ? '✅' : '🛑'} ${esc(c.sym)} ${esc(c.label)}: ${money(c.pnlCad)}`).join('\n') : 'No trades closed today') +
-    `\nOpen: ${book.open.map((o) => esc(o.sym)).join(', ') || 'none'}\n` + bookLine());
+    (today.length ? today.map((c) => `${c.pnlCad >= 0 ? '✅' : '🛑'} ${esc(c.sym)} ${esc(c.label)}${c.filtered ? ` (filtered: ${esc(c.filtered)})` : ''}: ${money(c.pnlCad)}`).join('\n') : 'No trades closed today') +
+    `\nOpen: ${book.open.map((o) => esc(o.sym) + (o.filtered ? '*' : '')).join(', ') || 'none'} (* = filtered-out signal)\n` + bookLine());
   state[`summary:${nowEt.date}`] = now;
 }
 
