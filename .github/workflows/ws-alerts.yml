@@ -1,0 +1,38 @@
+# Wealthsimple alerts: scans a watchlist every 15 min and sends Telegram messages. Alerts only: nothing is ever traded.
+# Dedupe state lives on the `ws-alerts-state` branch. Needs repo secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
+name: ws-alerts
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ws-alerts
+  cancel-in-progress: false
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save tsx
+      - name: Restore dedupe state
+        run: |
+          git fetch origin ws-alerts-state || true
+          git rev-parse --verify origin/ws-alerts-state >/dev/null 2>&1 && git checkout origin/ws-alerts-state -- wealthsimple/data/ || true
+      - run: npx tsx scripts/alerts.ts
+        working-directory: wealthsimple
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: Save dedupe state
+        run: |
+          git config user.name alerts-bot && git config user.email alerts-bot@users.noreply.github.com
+          git checkout --orphan ws-alerts-state-new
+          git rm -rf --cached . >/dev/null
+          git add -f wealthsimple/data/
+          git commit -m "ws alerts state" && git push -f origin ws-alerts-state-new:ws-alerts-state
