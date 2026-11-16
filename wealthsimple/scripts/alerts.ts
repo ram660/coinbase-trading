@@ -12,7 +12,7 @@ const MAX_PREMIUM_CAD = Number(process.env.MAX_PREMIUM_CAD ?? 350); // most you'
 const EARNINGS_DAYS = Number(process.env.EARNINGS_DAYS ?? 21); // no single-leg options if earnings fall inside the hold
 const STATE = 'data/alerts-state.json';
 const BOOK = 'data/paper-book.json';
-const POSITION_CAD = Number(process.env.POSITION_CAD ?? 600); // paper size per trade
+const POSITION_CAD = Number(process.env.POSITION_CAD ?? 300); // paper size per trade
 const START_CAD = Number(process.env.START_CAD ?? 2000);
 const MAX_HOLD_DAYS = Number(process.env.MAX_HOLD_DAYS ?? 7); // signal trades: ~5 trading days, as in the backtest
 // Wealthsimple: crypto spread ~1.5%/side; USD stocks 0 in a USD account (1.5% FX each way in a CAD account)

@@ -10,12 +10,12 @@ npx tsx scripts/backtest.ts         # signal + Monday-gap tests, 2y hourly
 npx tsx scripts/patterns.ts         # day-of-week / hour / gap scan
 ```
 
-Paper book: every alert also opens a simulated $600 CAD position (start $2,000) that is closed on stop, target, Monday's close
+Paper book: every alert also opens a simulated $300 CAD position (start $2,000) that is closed on stop, target, Monday's close
 (gap trades) or after 7 days (signal trades), with a Telegram message per close and a recap after 16:05 ET. Put alerts are tracked
 as a short of the underlying, not the option premium. `npx tsx scripts/alerts.ts --report` prints the book (state lives on the
 `ws-alerts-state` branch).
 
-Optional env: `POSITION_CAD` (600), `START_CAD` (2000), `MAX_HOLD_DAYS` (7), `CRYPTO_FEE_PCT` (1.5), `STOCK_FEE_PCT` (0),
+Optional env: `POSITION_CAD` (300), `START_CAD` (2000), `MAX_HOLD_DAYS` (7), `CRYPTO_FEE_PCT` (1.5), `STOCK_FEE_PCT` (0),
 `MIN_CONFIDENCE` (60), `COOLDOWN_HOURS` (6), `MAX_PREMIUM_CAD` (350), `EARNINGS_DAYS` (21).
 
 ## What the alerts do, and why (backtest Nov 2024 - Nov 2026, 6 stocks/ETFs + 3 coins)
