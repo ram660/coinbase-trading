@@ -3504,3 +3504,6 @@
 {"ts": "2026-11-17T12:01:27.250393+00:00", "book": "fast", "event": "rebalance", "note": "BTC below its 200-bar average: holding cash", "equity": 969.3689564249412}
 {"ts": "2026-11-17T12:01:29.185512+00:00", "book": "perps", "event": "fill", "product": "BTC-PERP", "side": "BUY", "qty": 0.01, "contracts": 1, "price": 64952.988, "fee": 0.23990597599999997, "realized": -6.958419999999969, "reason": "rebalance"}
 {"ts": "2026-11-17T12:01:29.185602+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.33x", "equity": 1098.6505839517952}
+{"ts": "2026-11-17T12:15:45.728811+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ELSA-USDC'"}
+{"ts": "2026-11-17T12:15:50.468246+00:00", "book": "fast", "event": "rebalance", "note": "BTC below its 200-bar average: holding cash", "equity": 969.3689564249412}
+{"ts": "2026-11-17T12:15:52.450945+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.33x", "equity": 1098.6507638506334}
