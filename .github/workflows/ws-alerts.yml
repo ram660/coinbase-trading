@@ -2,6 +2,10 @@
 # Dedupe state lives on the `ws-alerts-state` branch. Needs repo secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
 name: ws-alerts
 on:
+  # GitHub's own cron fires only a few times a day; paper-trading is dispatched every 15 min reliably, so ride on it.
+  workflow_run:
+    workflows: [paper-trading]
+    types: [completed]
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
