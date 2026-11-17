@@ -25,7 +25,7 @@ Optional env: `POSITION_CAD` (300), `START_CAD` (2000), `MAX_HOLD_DAYS` (7), `CR
 | Indicator signal, only when aligned with the ~50-day trend, no puts at RSI<30 / calls at RSI>70 | +0.08R/trade vs +0.03R unfiltered. Weak: treat as a watchlist, not a trigger. |
 | Monday gap-down >0.5%, buy shares after the first hour, exit at close | +1.0% avg, 66% up, 80 Mondays, both years and all 6 names positive. Gaps >4%: +2.2%. |
 | No single-leg options when earnings are within 21 days (Nasdaq calendar) | IV crush + gap risk. |
-| Real contract quote (30-50 DTE, near the money), cost in CAD, implied vs realized vol | Flags contracts over budget, wide spreads, expensive IV. |
+| 2-3 contract choices, expiries ~8-18 days out (just past the 7-day hold), near the money, cost in CAD | Short trades: theta is worst in the last days, so expiry stays past the sell-by date. Over `MAX_PREMIUM_CAD` is flagged. |
 
 Tested and dropped: SPY market-regime filter (no help), ADX>=25, R:R>=1.5, hour-of-day timing (stocks and crypto: nothing above the spread), crypto weekday/weekend effects (noise).
 

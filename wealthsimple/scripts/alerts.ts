@@ -83,32 +83,27 @@ async function earningsDate(sym: string): Promise<Date | null> {
   const m = /(\d{2})\/(\d{2})\/(\d{4})/.exec((await nasdaq(`analyst/${sym}/earnings-date`))?.reportText ?? '');
   return m ? new Date(`${m[3]}-${m[1]}-${m[2]}T12:00:00Z`) : null;
 }
-// Near-the-money contract ~30-50 days out: real bid/ask plus the straddle price (for implied vol).
-async function optionQuote(meta: Meta, price: number, bear: boolean) {
+// 2-3 short-dated contracts to pick from: expiries just past the hold (so theta isn't at its worst when you sell),
+// strike nearest the money that fits the budget (at most ~5% out of the money, else the at-the-money one, flagged).
+async function optionChoices(meta: Meta, price: number, bear: boolean, fx: number) {
   const iso = (d: number) => new Date(d).toISOString().slice(0, 10);
-  const d = await nasdaq(`quote/${meta.symbol}/option-chain?assetclass=${meta.etf ? 'etf' : 'stocks'}&limit=60&fromdate=${iso(Date.now() + 30 * DAY)}&todate=${iso(Date.now() + 50 * DAY)}&excode=oprac&callput=callput&money=at&type=all`);
-  const rows: any[] = d?.table?.rows ?? [];
-  const group = rows.find((r) => r.expirygroup)?.expirygroup;
-  const firstGroupRows = rows.slice(rows.findIndex((r) => r.expirygroup) + 1);
-  const end = firstGroupRows.findIndex((r) => r.expirygroup);
-  const strikes = (end < 0 ? firstGroupRows : firstGroupRows.slice(0, end)).filter((r) => r.strike);
-  if (!group || !strikes.length) return null;
-  const row = strikes.reduce((a, b) => (Math.abs(+b.strike - price) < Math.abs(+a.strike - price) ? b : a));
-  const num = (v: string | null) => (v && !Number.isNaN(+v) ? +v : NaN);
-  const cb = num(row.c_Bid), ca = num(row.c_Ask), pb = num(row.p_Bid), pa = num(row.p_Ask);
-  const bid = bear ? pb : cb, ask = bear ? pa : ca;
-  if (!(ask > 0)) return null;
-  const dte = Math.max(1, Math.round((new Date(group).getTime() - Date.now()) / DAY));
-  // ATM straddle ~= 0.8 * S * sigma * sqrt(T)  ->  implied vol estimate
-  const straddle = (cb + ca + pb + pa) / 2;
-  const iv = straddle > 0 ? straddle / (0.8 * price * Math.sqrt(dte / 365)) : NaN;
-  return { expiry: group as string, dte, strike: +row.strike, bid, ask, spreadPct: bid > 0 ? ((ask - bid) / ((ask + bid) / 2)) * 100 : NaN, iv };
-}
-function realizedVol(bars: Bar[]) {
-  const closes = sessions(bars).map((s) => s[s.length - 1].close).slice(-21);
-  const rets = closes.slice(1).map((c, i) => Math.log(c / closes[i]));
-  const m = rets.reduce((a, b) => a + b, 0) / rets.length;
-  return Math.sqrt(rets.reduce((a, b) => a + (b - m) ** 2, 0) / (rets.length - 1)) * Math.sqrt(252);
+  const lo = MAX_HOLD_DAYS + 1, hi = MAX_HOLD_DAYS + 11;
+  const d = await nasdaq(`quote/${meta.symbol}/option-chain?assetclass=${meta.etf ? 'etf' : 'stocks'}&limit=300&fromdate=${iso(Date.now() + lo * DAY)}&todate=${iso(Date.now() + hi * DAY)}&excode=oprac&callput=callput&money=at&type=all`);
+  const groups: { expiry: string; dte: number; rows: any[] }[] = [];
+  for (const r of d?.table?.rows ?? []) {
+    if (r.expirygroup) groups.push({ expiry: r.expirygroup, dte: Math.round((new Date(r.expirygroup).getTime() - Date.now()) / DAY), rows: [] });
+    else if (r.strike && groups.length) groups[groups.length - 1].rows.push(r);
+  }
+  if (!groups.length) return [];
+  const nearest = (t: number) => groups.reduce((a, g) => (Math.abs(g.dte - t) < Math.abs(a.dte - t) ? g : a));
+  return [...new Set([lo, lo + 4, lo + 8].map(nearest))].flatMap((g) => {
+    const opts = g.rows.map((r) => ({ strike: +r.strike, ask: +(bear ? r.p_Ask : r.c_Ask) })).filter((o) => o.ask > 0)
+      .sort((x, y) => Math.abs(x.strike - price) - Math.abs(y.strike - price));
+    if (!opts.length) return [];
+    const otm = (o: { strike: number }) => (bear ? price - o.strike : o.strike - price) / price;
+    const fit = opts.find((o) => o.ask * 100 * fx <= MAX_PREMIUM_CAD && otm(o) <= 0.05) ?? opts[0];
+    return [{ expiry: new Date(g.expiry).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), dte: g.dte, strike: fit.strike, ask: fit.ask, costCad: fit.ask * 100 * fx }];
+  });
 }
 
 async function send(html: string) {
@@ -230,7 +225,8 @@ for (const meta of WATCHLIST) {
     const key = `${meta.symbol}:${st.action}`;
     if (now - (state[key] ?? 0) < COOLDOWN_MS) continue;
 
-    let optionLines = '';
+    const sellBy = new Date(now + MAX_HOLD_DAYS * DAY).toLocaleDateString('en-CA', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+    let lines = '';
     if (meta.optionsEligible) {
       if (!meta.etf) {
         const ed = await earningsDate(meta.symbol);
@@ -240,32 +236,18 @@ for (const meta of WATCHLIST) {
           record(`earnings in ${days}d`);
           continue; // IV crush + gap risk: a single-leg option through earnings is a coin flip you pay for
         }
-        optionLines += `\nEarnings: ${ed ? `${ed.toISOString().slice(0, 10)} (${days}d)` : 'unknown, check before buying'}`;
       }
-      const q = await optionQuote(meta, s.price, bear);
-      if (q) {
-        const costCad = q.ask * 100 * usdcad, rv = realizedVol(all), ratio = q.iv / rv;
-        optionLines +=
-          `\nContract: ${esc(q.expiry)} (${q.dte}d) ${q.strike} ${bear ? 'Put' : 'Call'} · bid/ask <code>${q.bid.toFixed(2)}/${q.ask.toFixed(2)}</code> (spread ${q.spreadPct.toFixed(0)}%)` +
-          `\n1 contract ≈ <b>$${costCad.toFixed(0)} CAD</b> · IV ~${(q.iv * 100).toFixed(0)}% vs 20d realized ${(rv * 100).toFixed(0)}% → ` +
-          (ratio > 1.3 ? 'options <b>expensive</b>: prefer a debit spread or shares' : ratio < 0.9 ? 'options <b>cheap</b>: single leg OK' : 'options fairly priced') +
-          (costCad > MAX_PREMIUM_CAD ? `\n⚠️ Over your $${MAX_PREMIUM_CAD} CAD per-trade cap: use a debit spread (buy this strike, sell one ~10% further ${bear ? 'down' : 'up'}) or skip` : '') +
-          (q.spreadPct > 10 ? '\n⚠️ Wide spread: use a limit order at mid, never market' : '');
-      } else optionLines += '\nContract: no chain data, check strikes in the app';
+      const picks = await optionChoices(meta, s.price, bear, usdcad);
+      const side = bear ? 'Put' : 'Call';
+      lines = picks.length
+        ? picks.map((o, i) => `${i + 1}) ${o.expiry} (${o.dte}d) · $${o.strike} ${side} · ask $${o.ask.toFixed(2)} → <b>$${o.costCad.toFixed(0)} CAD</b>${o.costCad > MAX_PREMIUM_CAD ? ' ⚠️ over budget' : ''}`).join('\n')
+        : 'No chain data: pick a strike near the price, ~10-15 days out';
     }
-
+    record(''); // paper book still tracks it; not shown in the alert
     await send(
-      `🔔 <b>${esc(meta.symbol)}</b> · <code>${esc(st.action)}</code> · conf ${st.confidence}%\n` +
-      `Price <code>${s.price.toFixed(2)}</code> · RSI <code>${s.rsi.toFixed(0)}</code> · trend ${bear ? 'down' : 'up'} (aligned)\n` +
-      `${esc(st.strikeGuidance)}\nDelta ${esc(st.targetDelta)} · DTE ${esc(st.suggestedDTE)}\n` +
-      `Stop <code>${st.stopLossPrice.toFixed(2)}</code> · Target <code>${st.targetPrice.toFixed(2)}</code> · R:R ${esc(st.riskRewardRatio)}` +
-      optionLines + '\n' +
-      st.rationale.slice(0, 3).map((x) => `• ${esc(x)}`).join('\n') +
-      (meta.optionsEligible
-        ? `\n<b>Exit plan</b>: sell at -40% premium or if price goes ${bear ? 'above' : 'below'} stop · take half off at +50% · close by ~21 DTE`
-        : `\n<b>Risk plan</b>: spot only · size so a stop-out costs ≤1-2% of account · limit orders (spread ~1.5%)`) +
-      record('') +
-      `\n<i>Alert only. Place manually in Wealthsimple.</i>`,
+      `🔔 <b>${esc(meta.symbol)}</b> · ${meta.optionsEligible ? `BUY ${bear ? 'PUT' : 'CALL'}` : 'BUY spot'} · now <code>${s.price.toFixed(2)}</code>\n` +
+      (lines ? lines + '\n' : '') +
+      `Exit: stock ${bear ? 'above' : 'below'} <code>${st.stopLossPrice.toFixed(2)}</code> or ${bear ? 'below' : 'above'} <code>${st.targetPrice.toFixed(2)}</code>, else sell by ${sellBy}`,
     );
     state[key] = now;
   } catch (e) {
