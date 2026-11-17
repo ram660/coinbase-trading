@@ -271,6 +271,7 @@ for (const meta of WATCHLIST) {
     if (st.confidence < MIN_CONF) { await record(`confidence ${st.confidence}`); continue; }
     if (bear ? !(s.price < slow && fast < slow) : !(s.price > slow && fast > slow)) { await record('against trend'); continue; }
     if (bear ? s.rsi < 30 : s.rsi > 70) { await record(`RSI ${s.rsi.toFixed(0)}`); continue; }
+    if (holding(meta.symbol, '')) continue; // same signal, same open trade: nothing new to alert or record
     // one alert per group: SOXL/TQQQ/NVDA/PLTR are one Nasdaq bet. shortcut: first in watchlist order wins, not the strongest.
     const twin = book.open.find((o) => !o.filtered && o.sym !== meta.symbol && WATCHLIST.find((m) => m.symbol === o.sym)?.group === meta.group);
     if (twin) { await record(`already in ${meta.group} via ${twin.sym}`); continue; }
