@@ -5356,3 +5356,9 @@
 {"ts": "2026-11-23T15:45:45.880000+00:00", "book": "daily", "event": "error", "error": "KeyError: 'CLANKER-USDC'"}
 {"ts": "2026-11-23T15:45:51.840808+00:00", "book": "fast", "event": "rebalance", "note": "picks: VVV-USDC (2.34), QNT-USDC (1.80), DRV-USDC (1.80)", "equity": 933.7895096612704}
 {"ts": "2026-11-23T15:45:52.441056+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.32x", "equity": 1097.0303030373188}
+{"ts": "2026-11-23T16:01:13.282820+00:00", "book": "daily", "event": "fill", "product": "ELSA-USDC", "side": "SELL", "qty": 3183.835153751079, "price": 0.083608175, "fee": 1.3309732335298607}
+{"ts": "2026-11-23T16:01:13.282964+00:00", "book": "daily", "event": "error", "error": "KeyError: 'CLANKER-USDC'"}
+{"ts": "2026-11-23T16:01:21.118324+00:00", "book": "fast", "event": "fill", "product": "QNT-USDC", "side": "SELL", "qty": 1.9003533124469858, "price": 161.25933, "fee": 1.532248509642408}
+{"ts": "2026-11-23T16:01:21.118433+00:00", "book": "fast", "event": "fill", "product": "MORPHO-USDC", "side": "BUY", "qty": 182.7194779037, "price": 1.6604298, "fee": 1.524587267094196}
+{"ts": "2026-11-23T16:01:21.118480+00:00", "book": "fast", "event": "rebalance", "note": "picks: VVV-USDC (2.71), DRV-USDC (2.10), MORPHO-USDC (1.96)", "equity": 921.4524304610834}
+{"ts": "2026-11-23T16:01:21.621318+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.32x", "equity": 1097.929635704687}
