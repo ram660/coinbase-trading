@@ -6505,3 +6505,6 @@
 {"ts": "2026-11-27T03:01:22.940991+00:00", "book": "fast", "event": "fill", "product": "BCH-USDC", "side": "BUY", "qty": 1.3201878770422075, "price": 217.63876499999998, "fee": 1.4438394931027028}
 {"ts": "2026-11-27T03:01:22.941029+00:00", "book": "fast", "event": "rebalance", "note": "picks: SKY-USDC (1.95), FET-USDC (1.80), BCH-USDC (1.64)", "equity": 877.6891795578595}
 {"ts": "2026-11-27T03:01:23.923681+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.32x", "equity": 1088.3810375796616}
+{"ts": "2026-11-27T03:15:41.249127+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ELSA-USDC'"}
+{"ts": "2026-11-27T03:15:46.644527+00:00", "book": "fast", "event": "rebalance", "note": "picks: SKY-USDC (1.95), FET-USDC (1.80), BCH-USDC (1.64)", "equity": 877.6891795578595}
+{"ts": "2026-11-27T03:15:47.397592+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.32x", "equity": 1088.37995710836}
