@@ -6534,3 +6534,6 @@
 {"ts": "2026-11-27T05:15:42.422449+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ELSA-USDC'"}
 {"ts": "2026-11-27T05:15:46.942802+00:00", "book": "fast", "event": "rebalance", "note": "picks: SKY-USDC (1.82), FET-USDC (1.77), LTC-USDC (1.43)", "equity": 874.5234759720415}
 {"ts": "2026-11-27T05:15:47.419173+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.32x", "equity": 1086.3762438891808}
+{"ts": "2026-11-27T05:31:01.411265+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ELSA-USDC'"}
+{"ts": "2026-11-27T05:31:07.181528+00:00", "book": "fast", "event": "rebalance", "note": "picks: SKY-USDC (1.82), FET-USDC (1.77), LTC-USDC (1.43)", "equity": 874.5234759720415}
+{"ts": "2026-11-27T05:31:08.180157+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.32x", "equity": 1086.3749435973546}
