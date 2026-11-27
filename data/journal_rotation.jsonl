@@ -6481,3 +6481,10 @@
 {"ts": "2026-11-27T01:45:43.144464+00:00", "book": "daily", "event": "error", "error": "KeyError: 'CLANKER-USDC'"}
 {"ts": "2026-11-27T01:45:48.163820+00:00", "book": "fast", "event": "rebalance", "note": "BTC below its 200-bar average: holding cash", "equity": 882.3509264675931}
 {"ts": "2026-11-27T01:45:48.914347+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.31x", "equity": 1092.4843714028607}
+{"ts": "2026-11-27T02:01:09.995728+00:00", "book": "daily", "event": "fill", "product": "ELSA-USDC", "side": "SELL", "qty": 3183.835153751079, "price": 0.10086954000000001, "fee": 1.6057599369735034}
+{"ts": "2026-11-27T02:01:09.995858+00:00", "book": "daily", "event": "error", "error": "KeyError: 'CLANKER-USDC'"}
+{"ts": "2026-11-27T02:01:15.120086+00:00", "book": "fast", "event": "fill", "product": "FET-USDC", "side": "BUY", "qty": 2436.283029664176, "price": 0.12012002999999999, "fee": 1.4705848774459884}
+{"ts": "2026-11-27T02:01:15.120199+00:00", "book": "fast", "event": "fill", "product": "SEI-USDC", "side": "BUY", "qty": 7589.521031174909, "price": 0.03855926999999999, "fee": 1.4705848774459884}
+{"ts": "2026-11-27T02:01:15.120232+00:00", "book": "fast", "event": "fill", "product": "WIF-USDC", "side": "BUY", "qty": 2136.597082114543, "price": 0.13696845, "fee": 1.4705848774459884}
+{"ts": "2026-11-27T02:01:15.120260+00:00", "book": "fast", "event": "rebalance", "note": "picks: FET-USDC (1.40), SEI-USDC (1.27), WIF-USDC (1.17)", "equity": 877.500421624443}
+{"ts": "2026-11-27T02:01:15.901391+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.31x", "equity": 1092.3838134956598}
