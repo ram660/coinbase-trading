@@ -6595,3 +6595,8 @@
 {"ts": "2026-11-27T09:45:43.105038+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ELSA-USDC'"}
 {"ts": "2026-11-27T09:45:48.164016+00:00", "book": "fast", "event": "rebalance", "note": "picks: FET-USDC (2.14), SKY-USDC (1.65), SEI-USDC (1.48)", "equity": 866.2322907829282}
 {"ts": "2026-11-27T09:45:48.727584+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.32x", "equity": 1086.4782017714667}
+{"ts": "2026-11-27T10:15:46.864725+00:00", "book": "daily", "event": "error", "error": "KeyError: 'ELSA-USDC'"}
+{"ts": "2026-11-27T10:15:52.943948+00:00", "book": "fast", "event": "fill", "product": "SKY-USDC", "side": "SELL", "qty": 6041.790938022376, "price": 0.046236870000000006, "fee": 1.3967675108425937}
+{"ts": "2026-11-27T10:15:52.944034+00:00", "book": "fast", "event": "fill", "product": "DRV-USDC", "side": "BUY", "qty": 727.4455092545022, "price": 0.38638309499999995, "fee": 1.4124253633648525}
+{"ts": "2026-11-27T10:15:52.944070+00:00", "book": "fast", "event": "rebalance", "note": "picks: FET-USDC (2.30), DRV-USDC (1.65), SEI-USDC (1.58)", "equity": 857.6605965528671}
+{"ts": "2026-11-27T10:15:53.903907+00:00", "book": "perps", "event": "rebalance", "note": "BTC flat, ETH short 0.32x", "equity": 1086.8817967490736}
